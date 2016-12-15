@@ -173,8 +173,8 @@ class BehaviourControl(nengo.Network):
             self.behave = nengo.Node([0]*len(behaviours))
         for i, b in enumerate(behaviours):
             nengo.Connection(self.behave[i], b.activation, synapse=None)
-            
-            
+
+
 class TaskGrab(nengo.Network):
     def __init__(self, target, botnet, behaviours):
         super(TaskGrab, self).__init__()
@@ -186,18 +186,20 @@ class TaskGrab(nengo.Network):
             for i in range(len(behaviours)):
                 nengo.Connection(self.activation, self.behave.ensembles[i][1],
                                  synapse=None)
-                                 
+
             self.everything = nengo.Ensemble(n_neurons=100, dimensions=12)
             def do_it(x):
                 lx,ly,lr,lc, rx,ry,rr,rc, ax,ay,ar,ac = x
-                
+
                 ORIENT_LR = 0
                 ARM_ORIENT_LR = 1
                 ORIENT_FB = 2
                 GRASP_POS = 3
                 STAY_AWAY = 4
                 GRIP = 5
-                
+
+                diff = lx - rx
+
                 result = [0,0,0,0,0,0]
                 if (lc < 0.5 or rc < 0.5) and ac < 0.1:
                     result[STAY_AWAY] = 1
@@ -209,20 +211,35 @@ class TaskGrab(nengo.Network):
                     else:
                         result[ORIENT_LR] = 1
                         result[STAY_AWAY] = 1
-                    
+                        if diff > 0.75:   # if we are too close
+                            result[GRASP_POS] = 0
+                            
                 return result
             nengo.Connection(self.everything, self.behave.input[::2],
                              function=do_it)
-        
+
+            self.should_close = nengo.Ensemble(n_neurons=100, dimensions=1)
+            def do_should_close(x):
+                result = 0
+                lx,ly,lr,lc, rx,ry,rr,rc, ax,ay,ar,ac = x
+                diff = lx - rx
+                mid = (lx + rx) / 2
+                if lc > 0.5 and rc > 0.5 and np.abs(diff-0.7)<0.03 and np.abs(mid)<0.05:
+                    result = 1
+                return result
+            nengo.Connection(self.everything, self.should_close, function=do_should_close,
+                             synapse=None)
+            nengo.Connection(self.should_close, self.behave.input[10], synapse=0.1)
+
         nengo.Connection(target.info, self.everything, synapse=None)
-            
-            
-            
-            
+
+
+
+
         for i, b in enumerate(behaviours):
             nengo.Connection(self.behave.scaled[i], b.activation, synapse=None)
-    
-        
+
+
 
 
 model = nengo.Network()
@@ -236,7 +253,7 @@ with model:
     grasp_pos = GraspPosition(botnet)
     stay_away = StayAway(botnet)
     grip = Grip(botnet)
-    
+
     task_grab = TaskGrab(target, botnet, [orient_lr, arm_orient_lr, orient_fb,
                            grasp_pos, stay_away, grip])
 
