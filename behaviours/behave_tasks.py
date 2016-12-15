@@ -154,7 +154,7 @@ class StayAway(nengo.Network):
         with self:
             self.activation = nengo.Node(None, size_in=1)
         nengo.Connection(self.activation, botnet.base_pos[0],
-                transform=-1.37)
+                transform=-1.5)
 
 class Grip(nengo.Network):
     def __init__(self, botnet):
@@ -176,7 +176,7 @@ class BehaviourControl(nengo.Network):
 
 
 class TaskGrab(nengo.Network):
-    def __init__(self, target, botnet, behaviours):
+    def __init__(self, target, botnet, behaviours, grabbed):
         super(TaskGrab, self).__init__()
         with self:
             self.activation = nengo.Node(None, size_in=1)
@@ -230,17 +230,68 @@ class TaskGrab(nengo.Network):
             nengo.Connection(self.everything, self.should_close, function=do_should_close,
                              synapse=None)
             nengo.Connection(self.should_close, self.behave.input[10], synapse=0.1)
+        nengo.Connection(self.should_close, grabbed.has_grabbed, 
+                         synapse=0.1, transform=2)
 
         nengo.Connection(target.info, self.everything, synapse=None)
-
-
-
 
         for i, b in enumerate(behaviours):
             nengo.Connection(self.behave.scaled[i], b.activation, synapse=None)
 
 
 
+class TaskHold(nengo.Network):
+    def __init__(self, grip):
+        super(TaskHold, self).__init__()
+        with self:
+            self.activation = nengo.Node(None, size_in=1)
+        nengo.Connection(self.activation, grip.activation, transform=1)
+        
+
+
+class Grabbed(nengo.Network):
+    def __init__(self, botnet):
+        super(Grabbed, self).__init__()
+        with self:
+            self.has_grabbed = nengo.Ensemble(n_neurons=50, dimensions=1,
+                                              neuron_type=nengo.LIFRate())
+            def state(x):
+                if x<0.5: return 0
+                else: return 1
+            nengo.Connection(self.has_grabbed, self.has_grabbed, synapse=0.1)
+        def opened_gripper(x):
+            if x > -0.1:
+                return -1
+            else:
+                return 0
+        nengo.Connection(botnet.arm[3], self.has_grabbed,
+                         function=opened_gripper)
+
+class TaskGrabAndHold(nengo.Network):
+    def __init__(self, task_grab, task_hold, grabbed):
+        super(TaskGrabAndHold, self).__init__()
+        with self:
+            self.activation = nengo.Node(None, size_in=1)
+            
+            self.choice = nengo.Ensemble(n_neurons=100, dimensions=2)
+            nengo.Connection(self.activation, self.choice[0])
+        nengo.Connection(grabbed.has_grabbed, self.choice[1])
+        def choose_grab(x):
+            if x[1] < 0.5:
+                return x[0]
+            else:
+                return 0
+        nengo.Connection(self.choice, task_grab.activation, function=choose_grab)
+        def choose_hold(x):
+            if x[1] > 0.5:
+                return x[0]
+            else:
+                return 0
+        nengo.Connection(self.choice, task_hold.activation, function=choose_hold)
+        
+        
+            
+            
 
 model = nengo.Network()
 model.config[nengo.Ensemble].neuron_type=nengo.Direct()
@@ -254,8 +305,15 @@ with model:
     stay_away = StayAway(botnet)
     grip = Grip(botnet)
 
+    grabbed = Grabbed(botnet)
+
     task_grab = TaskGrab(target, botnet, [orient_lr, arm_orient_lr, orient_fb,
-                           grasp_pos, stay_away, grip])
+                           grasp_pos, stay_away, grip], grabbed)
+                           
+    task_hold = TaskHold(grip)
+    
+    task_grab_and_hold = TaskGrabAndHold(task_grab, task_hold, grabbed)
 
     bc = BehaviourControl([orient_lr, arm_orient_lr, orient_fb,
-                           grasp_pos, stay_away, grip, task_grab])
+                           grasp_pos, stay_away, grip, task_grab, task_hold,
+                           task_grab_and_hold])
