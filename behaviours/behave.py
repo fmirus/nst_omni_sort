@@ -11,7 +11,7 @@ if not hasattr(nstbot, 'mybot'):
     bot.tracker('retina_right', True, tracking_freqs=[200], streaming_period=10000)
     bot.tracker('retina_arm', True, tracking_freqs=[200], streaming_period=10000)
     bot.send('motors', 'init_motors', '!G31610\n!G41170\n!G51276\n!G6210\n')
-    bot.send('motors', 'init_motors_speed', '!P530\n')
+    bot.send('motors', 'init_motors_speed', '!P520\n')
     nstbot.mybot = bot
 else:
     bot = nstbot.mybot
@@ -21,7 +21,7 @@ import nengo
 
 class Bot(nengo.Network):
     def __init__(self, bot, msg_period=0.3,
-                 arm_offset=[np.pi+1, np.pi-1.5, np.pi-1, 0]):
+                 arm_offset=[np.pi+1, np.pi-1.5, np.pi-1, 1]):
         super(Bot, self).__init__()
         self.arm_offset = np.array(arm_offset)
         with self:
@@ -64,23 +64,23 @@ class OrientLR(nengo.Network):
         with self:
             self.x_data = nengo.Ensemble(n_neurons=500, dimensions=6, radius=3)
         nengo.Connection(target.info[[0,3,4,7,8,11]], self.x_data)
-        
+
         with self:
             self.x_pos = nengo.Ensemble(n_neurons=200, dimensions=2)
             def compute_pos(x):
                 lx, lc, rx, rc, ax, ac = x
-        
+
                 c = (lc + rc + ac)
                 if c <= 0.1:
                     return 0
                 return (lx*lc+rx*rc+ax*ac) / c
-        
+
             nengo.Connection(self.x_data, self.x_pos[0], function=compute_pos)
-            
+
             self.activation = nengo.Node(None, size_in=1)
             nengo.Connection(self.activation, self.x_pos[1], synapse=None)
 
-        nengo.Connection(self.x_pos, botnet.base_pos[2], 
+        nengo.Connection(self.x_pos, botnet.base_pos[2],
                          function=lambda x: x[0]*x[1],
                          transform=-1)
 
@@ -88,31 +88,31 @@ class OrientLR(nengo.Network):
 class OrientFB(nengo.Network):
     def __init__(self, target, botnet):
         super(OrientFB, self).__init__()
-        
+
         with self:
             self.data = nengo.Ensemble(n_neurons=100, dimensions=2)
         nengo.Connection(target.info[[0, 4]], self.data)
-        
+
         with self:
             self.spd = nengo.Ensemble(n_neurons=200, dimensions=2)
             def dist_func(x):
                 mid = x[0]+x[1]
                 diff = x[0] - x[1]
-        
+
                 target_separation = 0.8
                 if -0.5<mid<0.5:
                     return (target_separation - diff)*10
                 else:
                     return 0
-            nengo.Connection(self.data, self.spd[0], function=dist_func)        
-            
-    
+            nengo.Connection(self.data, self.spd[0], function=dist_func)
+
+
             self.activation = nengo.Node(None, size_in=1)
             nengo.Connection(self.activation, self.spd[1], synapse=None)
-    
-        nengo.Connection(self.spd, botnet.base_pos[0], 
+
+        nengo.Connection(self.spd, botnet.base_pos[0],
                          function=lambda x: x[0]*x[1])
-                         
+
 class GraspPosition(nengo.Network):
     def __init__(self, botnet):
         super(GraspPosition, self).__init__()
@@ -123,27 +123,27 @@ class GraspPosition(nengo.Network):
 
 
 class ArmOrientLR(nengo.Network):
-    def __init__(self, target, botnet, strength=2):
+    def __init__(self, target, botnet, strength=1):
         super(ArmOrientLR, self).__init__()
         with self:
             self.x_data = nengo.Ensemble(n_neurons=500, dimensions=2, radius=3)
         nengo.Connection(target.info[[8,11]], self.x_data)
-        
+
         with self:
             self.x_pos = nengo.Ensemble(n_neurons=200, dimensions=2)
             def compute_pos(x):
                 x, c = x
-        
+
                 if c <= 0.1:
                     return 0
                 return -x
-        
+
             nengo.Connection(self.x_data, self.x_pos[0], function=compute_pos)
-            
+
             self.activation = nengo.Node(None, size_in=1)
             nengo.Connection(self.activation, self.x_pos[1], synapse=None)
 
-        nengo.Connection(self.x_pos, botnet.base_pos[2], 
+        nengo.Connection(self.x_pos, botnet.base_pos[2],
                          function=lambda x: x[0]*x[1],
                          transform=strength)
 
@@ -154,7 +154,15 @@ class StayAway(nengo.Network):
         with self:
             self.activation = nengo.Node(None, size_in=1)
         nengo.Connection(self.activation, botnet.base_pos[0],
-                transform=-1)
+                transform=-1.37)
+
+class Grip(nengo.Network):
+    def __init__(self, botnet):
+        super(Grip, self).__init__()
+        with self:
+            self.activation = nengo.Node(None, size_in=1)
+        nengo.Connection(self.activation, botnet.arm[3],
+                transform=-0.4)
 
 
 
@@ -177,6 +185,7 @@ with model:
     orient_fb = OrientFB(target, botnet)
     grasp_pos = GraspPosition(botnet)
     stay_away = StayAway(botnet)
+    grip = Grip(botnet)
 
-    bc = BehaviourControl([orient_lr, arm_orient_lr, orient_fb, 
-                           grasp_pos, stay_away])
+    bc = BehaviourControl([orient_lr, arm_orient_lr, orient_fb,
+                           grasp_pos, stay_away, grip])
