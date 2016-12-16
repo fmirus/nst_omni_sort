@@ -61,6 +61,7 @@ class TargetInfo(nengo.Network):
 class OrientLR(nengo.Network):
     def __init__(self, target, botnet):
         super(OrientLR, self).__init__()
+        self.config[nengo.Ensemble].neuron_type = nengo.LIFRate()
         with self:
             self.x_data = nengo.Ensemble(n_neurons=500, dimensions=6, radius=3)
         nengo.Connection(target.info[[0,3,4,7,8,11]], self.x_data)
@@ -88,13 +89,14 @@ class OrientLR(nengo.Network):
 class OrientFB(nengo.Network):
     def __init__(self, target, botnet):
         super(OrientFB, self).__init__()
+        self.config[nengo.Ensemble].neuron_type = nengo.LIFRate()
 
         with self:
-            self.data = nengo.Ensemble(n_neurons=100, dimensions=2)
+            self.data = nengo.Ensemble(n_neurons=500, dimensions=2, radius=1.5)
         nengo.Connection(target.info[[0, 4]], self.data)
 
         with self:
-            self.spd = nengo.Ensemble(n_neurons=200, dimensions=2)
+            self.spd = nengo.Ensemble(n_neurons=500, dimensions=2, radius=1.5)
             def dist_func(x):
                 mid = x[0]+x[1]
                 diff = x[0] - x[1]
@@ -125,6 +127,7 @@ class GraspPosition(nengo.Network):
 class ArmOrientLR(nengo.Network):
     def __init__(self, target, botnet, strength=1):
         super(ArmOrientLR, self).__init__()
+        self.config[nengo.Ensemble].neuron_type = nengo.LIFRate()
         with self:
             self.x_data = nengo.Ensemble(n_neurons=500, dimensions=2, radius=3)
         nengo.Connection(target.info[[8,11]], self.x_data)
@@ -213,7 +216,7 @@ class TaskGrab(nengo.Network):
                         result[STAY_AWAY] = 1
                         if diff > 0.75:   # if we are too close
                             result[GRASP_POS] = 0
-                            
+
                 return result
             nengo.Connection(self.everything, self.behave.input[::2],
                              function=do_it)
@@ -230,7 +233,7 @@ class TaskGrab(nengo.Network):
             nengo.Connection(self.everything, self.should_close, function=do_should_close,
                              synapse=None)
             nengo.Connection(self.should_close, self.behave.input[10], synapse=0.1)
-        nengo.Connection(self.should_close, grabbed.has_grabbed, 
+        nengo.Connection(self.should_close, grabbed.has_grabbed,
                          synapse=0.1, transform=2)
 
         nengo.Connection(target.info, self.everything, synapse=None)
@@ -246,7 +249,7 @@ class TaskHold(nengo.Network):
         with self:
             self.activation = nengo.Node(None, size_in=1)
         nengo.Connection(self.activation, grip.activation, transform=1)
-        
+
 
 
 class Grabbed(nengo.Network):
@@ -270,10 +273,12 @@ class Grabbed(nengo.Network):
 class TaskGrabAndHold(nengo.Network):
     def __init__(self, task_grab, task_hold, grabbed):
         super(TaskGrabAndHold, self).__init__()
+        self.config[nengo.Ensemble].neuron_type = nengo.LIFRate()
+
         with self:
             self.activation = nengo.Node(None, size_in=1)
-            
-            self.choice = nengo.Ensemble(n_neurons=100, dimensions=2)
+
+            self.choice = nengo.Ensemble(n_neurons=100, dimensions=2, radius=1.5)
             nengo.Connection(self.activation, self.choice[0])
         nengo.Connection(grabbed.has_grabbed, self.choice[1])
         def choose_grab(x):
@@ -288,12 +293,12 @@ class TaskGrabAndHold(nengo.Network):
             else:
                 return 0
         nengo.Connection(self.choice, task_hold.activation, function=choose_hold)
-        
-        
-            
-            
 
-model = nengo.Network()
+
+
+
+
+model = nengo.Network(seed=1)
 model.config[nengo.Ensemble].neuron_type=nengo.Direct()
 with model:
     botnet = Bot(bot)
@@ -309,9 +314,9 @@ with model:
 
     task_grab = TaskGrab(target, botnet, [orient_lr, arm_orient_lr, orient_fb,
                            grasp_pos, stay_away, grip], grabbed)
-                           
+
     task_hold = TaskHold(grip)
-    
+
     task_grab_and_hold = TaskGrabAndHold(task_grab, task_hold, grabbed)
 
     bc = BehaviourControl([orient_lr, arm_orient_lr, orient_fb,
