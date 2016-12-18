@@ -1,17 +1,29 @@
 import nstbot
 import numpy as np
 
+use_bot = True
+
 if not hasattr(nstbot, 'mybot'):
-    bot = nstbot.OmniArmBot()
-    bot.connect(nstbot.SocketList({'motors': ['10.162.177.29', 54322],
-                                   'retina_left': ['10.162.177.29', 54320],
-                                   'retina_right': ['10.162.177.29', 54321],
-                                   'retina_arm': ['10.162.177.29', 54323],}))
-    bot.tracker('retina_left', True, tracking_freqs=[200], streaming_period=10000)
-    bot.tracker('retina_right', True, tracking_freqs=[200], streaming_period=10000)
-    bot.tracker('retina_arm', True, tracking_freqs=[200], streaming_period=10000)
-    bot.send('motors', 'init_motors', '!G31610\n!G41170\n!G51276\n!G6210\n')
-    bot.send('motors', 'init_motors_speed', '!P520\n')
+    if use_bot:
+        bot = nstbot.OmniArmBot()
+        bot.connect(nstbot.SocketList({'motors': ['10.162.177.29', 54322],
+                                       'retina_left': ['10.162.177.29', 54320],
+                                       'retina_right': ['10.162.177.29', 54321],
+                                       'retina_arm': ['10.162.177.29', 54323],}))
+        bot.tracker('retina_left', True, tracking_freqs=[200], streaming_period=10000)
+        bot.tracker('retina_right', True, tracking_freqs=[200], streaming_period=10000)
+        bot.tracker('retina_arm', True, tracking_freqs=[200], streaming_period=10000)
+        bot.send('motors', 'init_motors', '!G31610\n!G41170\n!G51276\n!G6210\n')
+        bot.send('motors', 'init_motors_speed', '!P520\n')
+    else:
+        class DummyBot(object):
+            def base_pos(self, x, msg_period):
+                pass
+            def arm(self, x, msg_period):
+                pass
+            def get_tracker_info(self, name, index):
+                return 0,0,0,0
+        bot = DummyBot()
     nstbot.mybot = bot
 else:
     bot = nstbot.mybot
