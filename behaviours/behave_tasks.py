@@ -183,14 +183,16 @@ class TaskGrab(nengo.Network):
         super(TaskGrab, self).__init__()
         with self:
             self.activation = nengo.Node(None, size_in=1)
-            self.behave = nengo.networks.EnsembleArray(n_neurons=100,
-                                n_ensembles=6, ens_dimensions=2)
+            self.behave = nengo.networks.EnsembleArray(n_neurons=400,
+                                n_ensembles=6, ens_dimensions=2, radius=1.5,
+                                neuron_type=nengo.LIFRate())
             self.behave.add_output('scaled', function=lambda x: x[0]*x[1])
             for i in range(len(behaviours)):
                 nengo.Connection(self.activation, self.behave.ensembles[i][1],
                                  synapse=None)
 
-            self.everything = nengo.Ensemble(n_neurons=100, dimensions=12)
+            self.everything = nengo.Ensemble(n_neurons=100, dimensions=12,
+                                    neuron_type=nengo.Direct())
             def do_it(x):
                 lx,ly,lr,lc, rx,ry,rr,rc, ax,ay,ar,ac = x
 
@@ -221,7 +223,8 @@ class TaskGrab(nengo.Network):
             nengo.Connection(self.everything, self.behave.input[::2],
                              function=do_it)
 
-            self.should_close = nengo.Ensemble(n_neurons=100, dimensions=1)
+            self.should_close = nengo.Ensemble(n_neurons=200, dimensions=1,
+                                   neuron_type=nengo.LIFRate(), radius=1.2)
             def do_should_close(x):
                 result = 0
                 lx,ly,lr,lc, rx,ry,rr,rc, ax,ay,ar,ac = x
@@ -232,7 +235,7 @@ class TaskGrab(nengo.Network):
                 return result
             nengo.Connection(self.everything, self.should_close, function=do_should_close,
                              synapse=None)
-            nengo.Connection(self.should_close, self.behave.input[10], synapse=0.1)
+            nengo.Connection(self.should_close, self.behave.input[10], synapse=0.2)
         nengo.Connection(self.should_close, grabbed.has_grabbed,
                          synapse=0.1, transform=2)
 
@@ -278,18 +281,18 @@ class TaskGrabAndHold(nengo.Network):
         with self:
             self.activation = nengo.Node(None, size_in=1)
 
-            self.choice = nengo.Ensemble(n_neurons=100, dimensions=2, radius=1.5)
+            self.choice = nengo.Ensemble(n_neurons=300, dimensions=2, radius=1.5)
             nengo.Connection(self.activation, self.choice[0])
         nengo.Connection(grabbed.has_grabbed, self.choice[1])
         def choose_grab(x):
-            if x[1] < 0.5:
-                return x[0]
+            if x[1] < 0.5 and x[0]>0.5:
+                return 1
             else:
                 return 0
         nengo.Connection(self.choice, task_grab.activation, function=choose_grab)
         def choose_hold(x):
-            if x[1] > 0.5:
-                return x[0]
+            if x[1] > 0.5 and x[0]>0.5:
+                return 1
             else:
                 return 0
         nengo.Connection(self.choice, task_hold.activation, function=choose_hold)
@@ -298,8 +301,7 @@ class TaskGrabAndHold(nengo.Network):
 
 
 
-model = nengo.Network(seed=1)
-model.config[nengo.Ensemble].neuron_type=nengo.Direct()
+model = nengo.Network(seed=2)
 with model:
     botnet = Bot(bot)
     target = TargetInfo(botnet)
@@ -322,3 +324,12 @@ with model:
     bc = BehaviourControl([orient_lr, arm_orient_lr, orient_fb,
                            grasp_pos, stay_away, grip, task_grab, task_hold,
                            task_grab_and_hold])
+
+
+if __name__ == '__main__':
+    with model:
+        start = nengo.Node([1])
+        nengo.Connection(start, task_grab_and_hold.activation)
+    sim = nengo.Simulator(model)
+    while True:
+        sim.run(10)
