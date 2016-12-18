@@ -1,7 +1,7 @@
 import nstbot
 import numpy as np
 
-use_bot = True
+use_bot = False
 
 if not hasattr(nstbot, 'mybot'):
     if use_bot:
@@ -317,6 +317,7 @@ class TaskGrabAndHold(nengo.Network):
 
 model = nengo.Network(seed=2)
 model.config[nengo.Ensemble].neuron_type = nengo.LIFRate()
+model.config[nengo.Connection].solver = nengo.LstsqL2(reg=0.1)
 with model:
     botnet = Bot(bot)
     target = TargetInfo(botnet)
