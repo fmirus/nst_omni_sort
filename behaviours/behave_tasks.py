@@ -70,10 +70,11 @@ class TargetInfo(nengo.Network):
             self.info = nengo.Node(None, size_in=12)
         nengo.Connection(botnet.tracker, self.info, synapse=None)
 
+
 class OrientLR(nengo.Network):
     def __init__(self, target, botnet):
         super(OrientLR, self).__init__()
-        self.config[nengo.Ensemble].neuron_type = nengo.LIFRate()
+        #self.config[nengo.Ensemble].neuron_type = nengo.Direct()
         with self:
             self.x_data = nengo.Ensemble(n_neurons=500, dimensions=6, radius=3)
         nengo.Connection(target.info[[0,3,4,7,8,11]], self.x_data)
@@ -101,7 +102,7 @@ class OrientLR(nengo.Network):
 class OrientFB(nengo.Network):
     def __init__(self, target, botnet):
         super(OrientFB, self).__init__()
-        self.config[nengo.Ensemble].neuron_type = nengo.LIFRate()
+        #self.config[nengo.Ensemble].neuron_type = nengo.Direct()
 
         with self:
             self.data = nengo.Ensemble(n_neurons=500, dimensions=2, radius=1.5)
@@ -139,7 +140,7 @@ class GraspPosition(nengo.Network):
 class ArmOrientLR(nengo.Network):
     def __init__(self, target, botnet, strength=1):
         super(ArmOrientLR, self).__init__()
-        self.config[nengo.Ensemble].neuron_type = nengo.LIFRate()
+        #self.config[nengo.Ensemble].neuron_type = nengo.Direct()
         with self:
             self.x_data = nengo.Ensemble(n_neurons=500, dimensions=2, radius=3)
         nengo.Connection(target.info[[8,11]], self.x_data)
@@ -193,11 +194,12 @@ class BehaviourControl(nengo.Network):
 class TaskGrab(nengo.Network):
     def __init__(self, target, botnet, behaviours, grabbed):
         super(TaskGrab, self).__init__()
+        #self.config[nengo.Ensemble].neuron_type = nengo.Direct()
         with self:
             self.activation = nengo.Node(None, size_in=1)
             self.behave = nengo.networks.EnsembleArray(n_neurons=400,
                                 n_ensembles=6, ens_dimensions=2, radius=1.5,
-                                neuron_type=nengo.LIFRate())
+                                )
             self.behave.add_output('scaled', function=lambda x: x[0]*x[1])
             for i in range(len(behaviours)):
                 nengo.Connection(self.activation, self.behave.ensembles[i][1],
@@ -236,7 +238,7 @@ class TaskGrab(nengo.Network):
                              function=do_it)
 
             self.should_close = nengo.Ensemble(n_neurons=200, dimensions=1,
-                                   neuron_type=nengo.LIFRate(), radius=1.2)
+                                   radius=1.2)
             def do_should_close(x):
                 result = 0
                 lx,ly,lr,lc, rx,ry,rr,rc, ax,ay,ar,ac = x
@@ -288,7 +290,7 @@ class Grabbed(nengo.Network):
 class TaskGrabAndHold(nengo.Network):
     def __init__(self, task_grab, task_hold, grabbed):
         super(TaskGrabAndHold, self).__init__()
-        self.config[nengo.Ensemble].neuron_type = nengo.LIFRate()
+        #self.config[nengo.Ensemble].neuron_type = nengo.Direct()
 
         with self:
             self.activation = nengo.Node(None, size_in=1)
@@ -314,6 +316,7 @@ class TaskGrabAndHold(nengo.Network):
 
 
 model = nengo.Network(seed=2)
+model.config[nengo.Ensemble].neuron_type = nengo.LIFRate()
 with model:
     botnet = Bot(bot)
     target = TargetInfo(botnet)
