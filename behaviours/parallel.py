@@ -5,7 +5,7 @@ import numpy as np
 periods = [2860, 4000, 5000, 6670]
 freqs = 1000000 / np.array(periods, dtype=float)
 
-use_bot = False
+use_bot = True
 
 if not hasattr(nstbot, 'mybot'):
     if use_bot:
@@ -125,24 +125,24 @@ class Parallel(nengo.Network):
             self.all_diff = nengo.networks.EnsembleArray(n_neurons=200,
                                     n_ensembles=len(freqs),
                                     ens_dimensions=2)
-    
+
             self.all_diff.add_output('product', lambda x: x[0]*x[1])
             self.slide = nengo.Ensemble(n_neurons=200, dimensions=2)
             nengo.Connection(self.all_diff.product, self.slide[0],
                                 transform=np.ones((1, len(freqs))))
             self.activation = nengo.Node(None, size_in=1)
             nengo.Connection(self.activation, self.slide[1], synapse=None)
-    
+
         for i, ens in enumerate(self.all_diff.ensembles):
             nengo.Connection(botnet.tracker[12*i+0], ens[1], transform=0.5)
             nengo.Connection(botnet.tracker[12*i+4], ens[1], transform=0.5)
-    
+
             nengo.Connection(botnet.tracker[12*i+0], ens[0], transform=1)
             nengo.Connection(botnet.tracker[12*i+4], ens[0], transform=-1)
             nengo.Connection(target.info[[0]], ens[0], transform=-1)
             nengo.Connection(target.info[[4]], ens[0], transform=1)
-    
-    
+
+
         nengo.Connection(self.slide, botnet.base_pos[1],
                          function=lambda x: x[0]*x[1],
                          transform=1, # change this to -1 to swap direction
