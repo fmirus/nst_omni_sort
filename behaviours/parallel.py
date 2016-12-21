@@ -2,8 +2,10 @@ import nstbot
 import numpy as np
 
 
-periods = [2860, 4000, 5000, 6670]
-freqs = 1000000 / np.array(periods, dtype=float)
+# periods = [2860, 4000, 5000, 6670]
+# freqs = 1000000 / np.array(periods, dtype=float)
+periods = [2500, 2860, 4000, 5000]
+freqs = np.ceil(1000000 / np.array(periods, dtype=float))
 
 use_bot = True
 
@@ -17,6 +19,7 @@ if not hasattr(nstbot, 'mybot'):
         bot.tracker('retina_left', True, tracking_freqs=freqs, streaming_period=10000)
         bot.tracker('retina_right', True, tracking_freqs=freqs, streaming_period=10000)
         bot.tracker('retina_arm', True, tracking_freqs=freqs, streaming_period=10000)
+        bot.set_arm_speed([30,40,40,70])
     else:
         class DummyBot(object):
             def base_pos(self, x, msg_period):
@@ -122,31 +125,40 @@ class Parallel(nengo.Network):
         self.config[nengo.Ensemble].neuron_type = nengo.Direct()
 
         with self:
-            self.all_diff = nengo.networks.EnsembleArray(n_neurons=200,
-                                    n_ensembles=len(freqs),
-                                    ens_dimensions=2)
+            self.input = nengo.Ensemble(n_neurons=1, dimensions=12*len(freqs))
 
-            self.all_diff.add_output('product', lambda x: x[0]*x[1])
+            def compute_slide(x):
+                x_pos_left = np.zeros(len(freqs))
+                x_pos_right = np.zeros(len(freqs))
+                for i in range(len(freqs)):
+                    x_pos_left[i] = x[12*i+0]
+                    x_pos_right[i] = x[12*i+4]
+
+                disparity = x_pos_left - x_pos_right
+
+                target_disparity = disparity[2]
+
+                slide = 0
+                for i in range(len(freqs)):
+                    diff = disparity[i] - target_disparity
+
+                    location = (x_pos_left[i] + x_pos_right[i])/2
+
+                    slide += diff * location
+
+                return slide
+
             self.slide = nengo.Ensemble(n_neurons=200, dimensions=2)
-            nengo.Connection(self.all_diff.product, self.slide[0],
-                                transform=np.ones((1, len(freqs))))
+            nengo.Connection(self.input, self.slide[0],
+                                function=compute_slide)
             self.activation = nengo.Node(None, size_in=1)
             nengo.Connection(self.activation, self.slide[1], synapse=None)
 
-        for i, ens in enumerate(self.all_diff.ensembles):
-            nengo.Connection(botnet.tracker[12*i+0], ens[1], transform=0.5)
-            nengo.Connection(botnet.tracker[12*i+4], ens[1], transform=0.5)
-
-            nengo.Connection(botnet.tracker[12*i+0], ens[0], transform=1)
-            nengo.Connection(botnet.tracker[12*i+4], ens[0], transform=-1)
-            nengo.Connection(target.info[[0]], ens[0], transform=-1)
-            nengo.Connection(target.info[[4]], ens[0], transform=1)
-
+        nengo.Connection(botnet.tracker, self.input)
 
         nengo.Connection(self.slide, botnet.base_pos[1],
                          function=lambda x: x[0]*x[1],
-                         transform=1, # change this to -1 to swap direction
-                                      # increase value to slide faster
+                         transform=50  # increase value to slide faster
                          )
 
 

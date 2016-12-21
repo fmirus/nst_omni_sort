@@ -2,8 +2,12 @@ import nstbot
 import numpy as np
 
 
-periods = [2860, 4000, 5000, 6670]
-freqs = 1000000 / np.array(periods, dtype=float)
+# periods = [2860, 4000, 5000, 6670]
+# freqs = 1000000 / np.array(periods, dtype=float)
+periods = [2500, 2860, 4000, 5000]
+freqs = np.ceil(1000000 / np.array(periods, dtype=float))
+
+b_direct = False
 
 use_bot = True
 
@@ -18,7 +22,8 @@ if not hasattr(nstbot, 'mybot'):
         bot.tracker('retina_right', True, tracking_freqs=freqs, streaming_period=10000)
         bot.tracker('retina_arm', True, tracking_freqs=freqs, streaming_period=10000)
         bot.send('motors', 'init_motors', '!G31610\n!G41170\n!G51276\n!G6210\n')
-        bot.send('motors', 'init_motors_speed', '!P520\n')
+        #bot.send('motors', 'init_motors_speed', '!P520\n')
+        bot.set_arm_speed([30,40,40,70])
     else:
         class DummyBot(object):
             def base_pos(self, x, msg_period):
@@ -146,7 +151,7 @@ class TargetInfo(nengo.Network):
 
             self.freqs = nengo.networks.EnsembleArray(n_neurons=100, n_ensembles=12*len(freqs))
             for i in range(len(freqs)):
-                nengo.Connection(self.freqs.output[i*12:(i+1)*12], self.info_array.input)
+                nengo.Connection(self.freqs.output[i*12:(i+1)*12], self.info_array.input, synapse=None)
 
             self.inhibit = nengo.networks.EnsembleArray(n_neurons=100, n_ensembles=len(freqs),
                                                          encoders=nengo.dists.Choice([[1]]),
@@ -172,7 +177,8 @@ class TargetInfo(nengo.Network):
 class OrientLR(nengo.Network):
     def __init__(self, target, botnet):
         super(OrientLR, self).__init__()
-        #self.config[nengo.Ensemble].neuron_type = nengo.Direct()
+        if b_direct:
+            self.config[nengo.Ensemble].neuron_type = nengo.Direct()
         with self:
             self.x_data = nengo.Ensemble(n_neurons=500, dimensions=6, radius=3)
         nengo.Connection(target.info[[0,3,4,7,8,11]], self.x_data)
@@ -200,7 +206,8 @@ class OrientLR(nengo.Network):
 class OrientFB(nengo.Network):
     def __init__(self, target, botnet):
         super(OrientFB, self).__init__()
-        #self.config[nengo.Ensemble].neuron_type = nengo.Direct()
+        if b_direct:
+            self.config[nengo.Ensemble].neuron_type = nengo.Direct()
 
         with self:
             self.data = nengo.Ensemble(n_neurons=500, dimensions=2, radius=1.5)
@@ -224,7 +231,7 @@ class OrientFB(nengo.Network):
             nengo.Connection(self.activation, self.spd[1], synapse=None)
 
         nengo.Connection(self.spd, botnet.base_pos[0],
-                         function=lambda x: x[0]*x[1])
+                         function=lambda x: x[0]*x[1], transform=5.0)
 
 class GraspPosition(nengo.Network):
     def __init__(self, botnet):
@@ -238,7 +245,8 @@ class GraspPosition(nengo.Network):
 class ArmOrientLR(nengo.Network):
     def __init__(self, target, botnet, strength=1):
         super(ArmOrientLR, self).__init__()
-        #self.config[nengo.Ensemble].neuron_type = nengo.Direct()
+        if b_direct:
+            self.config[nengo.Ensemble].neuron_type = nengo.Direct()
         with self:
             self.x_data = nengo.Ensemble(n_neurons=500, dimensions=2, radius=3)
         nengo.Connection(target.info[[8,11]], self.x_data)
@@ -268,7 +276,7 @@ class StayAway(nengo.Network):
         with self:
             self.activation = nengo.Node(None, size_in=1)
         nengo.Connection(self.activation, botnet.base_pos[0],
-                transform=-1.5)
+                transform=-1.0)
 
 class Grip(nengo.Network):
     def __init__(self, botnet):
@@ -292,7 +300,8 @@ class BehaviourControl(nengo.Network):
 class TaskGrab(nengo.Network):
     def __init__(self, target, botnet, behaviours, grabbed):
         super(TaskGrab, self).__init__()
-        #self.config[nengo.Ensemble].neuron_type = nengo.Direct()
+        if b_direct:
+            self.config[nengo.Ensemble].neuron_type = nengo.Direct()
         with self:
             self.activation = nengo.Node(None, size_in=1)
             self.behave = nengo.networks.EnsembleArray(n_neurons=400,
@@ -321,6 +330,7 @@ class TaskGrab(nengo.Network):
                 if (lc < 0.5 or rc < 0.5) and ac < 0.1:
                     result[STAY_AWAY] = 1
                 else:
+                    result[GRASP_POS] = 1
                     result[ORIENT_FB] = 1
                     result[GRASP_POS] = 1
                     if ac > 0.1:
@@ -328,8 +338,8 @@ class TaskGrab(nengo.Network):
                     else:
                         result[ORIENT_LR] = 1
                         result[STAY_AWAY] = 1
-                        if diff > 0.75:   # if we are too close
-                            result[GRASP_POS] = 0
+                        # if diff > 0.75:   # if we are too close
+                        #     result[GRASP_POS] = 0
 
                 return result
             nengo.Connection(self.everything, self.behave.input[::2],
@@ -388,7 +398,8 @@ class Grabbed(nengo.Network):
 class TaskGrabAndHold(nengo.Network):
     def __init__(self, task_grab, task_hold, grabbed):
         super(TaskGrabAndHold, self).__init__()
-        #self.config[nengo.Ensemble].neuron_type = nengo.Direct()
+        if b_direct:
+            self.config[nengo.Ensemble].neuron_type = nengo.Direct()
 
         with self:
             self.activation = nengo.Node(None, size_in=1)

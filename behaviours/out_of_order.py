@@ -2,8 +2,11 @@ import nstbot
 import numpy as np
 
 
-periods = [2860, 4000, 5000, 6670]
-freqs = 1000000 / np.array(periods, dtype=float)
+# periods = [2860, 4000, 5000, 6670]
+# freqs = 1000000 / np.array(periods, dtype=float)
+periods = [2500, 2860, 4000, 5000]
+freqs = np.ceil(1000000 / np.array(periods, dtype=float))
+
 
 use_bot = True
 
