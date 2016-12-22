@@ -352,7 +352,7 @@ class TaskGrab(nengo.Network):
                 lx,ly,lr,lc, rx,ry,rr,rc, ax,ay,ar,ac = x
                 diff = lx - rx
                 mid = (lx + rx) / 2
-                if lc > 0.5 and rc > 0.5 and np.abs(diff-0.7)<0.03 and np.abs(mid)<0.05:
+                if lc > 0.5 and rc > 0.5 and np.abs(diff-0.7)<0.1 and np.abs(mid)<0.1:
                     result = 1
                 return result
             nengo.Connection(self.everything, self.should_close, function=do_should_close,
