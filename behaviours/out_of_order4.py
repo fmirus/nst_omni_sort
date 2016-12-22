@@ -23,7 +23,7 @@ if not hasattr(nstbot, 'mybot'):
         bot.tracker('retina_arm', True, tracking_freqs=freqs, streaming_period=10000)
         bot.send('motors', 'init_motors', '!G31610\n!G41170\n!G51276\n!G6210\n')
         #bot.send('motors', 'init_motors_speed', '!P520\n')
-        bot.set_arm_speed([30,40,40,70])
+        bot.set_arm_speed([30,40,40,80])
     else:
         class DummyBot(object):
             def base_pos(self, x, msg_period):
@@ -325,18 +325,22 @@ class TaskGrab(nengo.Network):
                 GRIP = 5
 
                 diff = lx - rx
+                y_av = (ly + ry)/2.0
 
                 result = [0,0,0,0,0,0]
                 if (lc < 0.5 or rc < 0.5) and ac < 0.1:
                     result[STAY_AWAY] = 1
-                else:
                     result[GRASP_POS] = 1
+                else:
                     result[ORIENT_FB] = 1
                     result[GRASP_POS] = 1
                     if ac > 0.1:
                         result[ARM_ORIENT_LR] = 1
                     else:
-                        result[ORIENT_LR] = 1
+                        if y_av > 0.3:
+                            result[ORIENT_LR] = 0
+                        else:
+                            result[ORIENT_LR] = 1
                         result[STAY_AWAY] = 1
                         # if diff > 0.75:   # if we are too close
                         #     result[GRASP_POS] = 0
