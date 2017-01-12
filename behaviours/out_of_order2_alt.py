@@ -114,10 +114,8 @@ class OutOfOrder(nengo.Network):
 
             def calc_distance(x):
 
-                without_min = np.delete(x, np.argmin(x))
-                second_min = abs(min(without_min))
 
-                result = abs(min(x)) + second_min
+                result = 2*abs(min(x))
                 ind_min = np.argmin(x)
                 ind_max = np.argmax(x)
 
@@ -159,8 +157,8 @@ class OutOfOrder(nengo.Network):
                     return 0
             nengo.Connection(self.certainty, self.not_see_all, function=not_see_all_func)
 
-            nengo.Connection(self.not_see_all, self.odd.neurons,
-                                transform=np.ones((self.odd.n_neurons, 1))*-5)
+            # nengo.Connection(self.not_see_all, self.odd.neurons,
+            #                     transform=np.ones((self.odd.n_neurons, 1))*-5)
 
             nengo.Connection(self.odd, self.evidence.input, transform=0.2)
 
@@ -174,7 +172,37 @@ class OutOfOrder(nengo.Network):
         nengo.Connection(botnet.tracker[::12], self.x_input)
         nengo.Connection(botnet.tracker[3::12], self.c_input)
 
+# copy of OrientFB
+# TODO: change to move sidewards depending on distance calculated in OutOfOrder
+class MoveSidewards(nengo.Network):
+    def __init__(self, target, botnet):
+        super(MoveSidewards, self).__init__()
+        if b_direct:
+            self.config[nengo.Ensemble].neuron_type = nengo.Direct()
 
+        with self:
+            self.data = nengo.Ensemble(n_neurons=500, dimensions=2, radius=1.5)
+        nengo.Connection(target.info[[0, 4]], self.data)
+
+        with self:
+            self.spd = nengo.Ensemble(n_neurons=500, dimensions=2, radius=1.5)
+            def dist_func(x):
+                mid = x[0]+x[1]
+                diff = x[0] - x[1]
+
+                target_separation = 0.8
+                if -0.5<mid<0.5:
+                    return (target_separation - diff)*10
+                else:
+                    return 0
+            nengo.Connection(self.data, self.spd[0], function=dist_func)
+
+
+            self.activation = nengo.Node(None, size_in=1)
+            nengo.Connection(self.activation, self.spd[1], synapse=None)
+
+        nengo.Connection(self.spd, botnet.base_pos[0],
+                         function=lambda x: x[0]*x[1], transform=5.0)
 
 
 
