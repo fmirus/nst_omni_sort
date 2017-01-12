@@ -7,7 +7,7 @@ import numpy as np
 periods = [2500, 2860, 4000, 5000, 6670]
 freqs = np.ceil(1000000 / np.array(periods, dtype=float))
 
-use_bot = False
+use_bot = True
 
 if not hasattr(nstbot, 'mybot'):
     if use_bot:
@@ -73,6 +73,8 @@ class OutOfOrder(nengo.Network):
 
             self.x_input = nengo.Node(None, size_in=len(freqs))
 
+            self.sw_travel_dist = nengo.Ensemble(n_neurons=100, dimensions=1)
+
             self.diff = nengo.Ensemble(n_neurons=300, dimensions=len(freqs)-1)
             nengo.Connection(self.x_input[:-1], self.diff, transform=-1)
             nengo.Connection(self.x_input[1:], self.diff, transform=1)
@@ -87,7 +89,14 @@ class OutOfOrder(nengo.Network):
             nengo.Connection(self.diff, self.min_neurons, synapse=0.01, function=min_func)
 
             def worst_func(x):
-                return np.eye(len(freqs))[np.argmin(x)+1]
+                # TODO: handle edge case for very first stimulus?
+                ind_min = np.argmin(x)
+                ind_max = np.argmax(x)
+                ind_result = ind_min
+
+                if ind_max > ind_min:
+                    ind_result += 1
+                return np.eye(len(freqs))[ind_result]
 
             nengo.Connection(self.diff, self.odd, function=worst_func)
 
@@ -103,19 +112,34 @@ class OutOfOrder(nengo.Network):
 
             nengo.Connection(self.min_neurons, self.negative_min, function=neg_min_func)
 
+            def calc_distance(x):
+
+                without_min = np.delete(x, np.argmin(x))
+                second_min = abs(min(without_min))
+
+                result = abs(min(x)) + second_min
+                ind_min = np.argmin(x)
+                ind_max = np.argmax(x)
+
+                direction = 1
+
+                if ind_max > ind_min:
+                    # TODO: check if this sign is correct for the traveling direction
+                    direction = -1
+
+                result *= direction
+
+                return  result
+
+            nengo.Connection(self.diff, self.sw_travel_dist, function=calc_distance)
+            # inhibit odd and sidewards travel distance ensembles in case we have only positive distances
             nengo.Connection(self.negative_min, self.odd.neurons,
                                 transform=np.ones((self.odd.n_neurons, 1))*-5)
 
-            # self.not_see_all = nengo.Ensemble(n_neurons=100, dimensions=1,
-            #                                   encoders=nengo.dists.Choice([[1]]),
-            #                                   intercepts=nengo.dists.Uniform(0.3, 0.9))
-            # def not_see_all_func(x):
-            #     if min(x)<0.3:
-            #         return 1
-            #     else:
-            #         return 0
-            # nengo.Connection(self.certainty, self.not_see_all, function=not_see_all_func)
+            nengo.Connection(self.negative_min, self.sw_travel_dist.neurons,
+                                transform=np.ones((self.sw_travel_dist.n_neurons, 1))*-5)
 
+            # build up evidence for the target
             self.evidence = nengo.networks.EnsembleArray(n_neurons=100, n_ensembles=len(freqs),
                                                          encoders=nengo.dists.Choice([[1]]),
                                                          intercepts=nengo.dists.Uniform(0, 1))
@@ -123,8 +147,20 @@ class OutOfOrder(nengo.Network):
             nengo.Connection(self.evidence.output, self.evidence.input, synapse=0.1,
                                 transform=-0.7*(1-np.eye(len(freqs))))
 
-            # nengo.Connection(self.not_see_all, self.odd.neurons,
-            #                     transform=np.ones((self.odd.n_neurons, 1))*-5)
+            # we want to inhibit the odd population in case we don`t see all stimuli
+            # TODO: implement exception: we don`t want to inhibit in case we already grabbed one object
+            self.not_see_all = nengo.Ensemble(n_neurons=100, dimensions=1,
+                                              encoders=nengo.dists.Choice([[1]]),
+                                              intercepts=nengo.dists.Uniform(0.3, 0.9))
+            def not_see_all_func(x):
+                if min(x)<0.3:
+                    return 1
+                else:
+                    return 0
+            nengo.Connection(self.certainty, self.not_see_all, function=not_see_all_func)
+
+            nengo.Connection(self.not_see_all, self.odd.neurons,
+                                transform=np.ones((self.odd.n_neurons, 1))*-5)
 
             nengo.Connection(self.odd, self.evidence.input, transform=0.2)
 
