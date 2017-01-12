@@ -317,36 +317,21 @@ class ArmOrientLR(nengo.Network):
                          function=lambda x: x[0]*x[1],
                          transform=strength)
 
-# copy of OrientFB
-# TODO: change to move sidewards depending on distance calculated in OutOfOrder
+
 class MoveSidewards(nengo.Network):
-    def __init__(self, target, botnet):
+    def __init__(self, order, botnet):
         super(MoveSidewards, self).__init__()
         if b_direct:
             self.config[nengo.Ensemble].neuron_type = nengo.Direct()
 
         with self:
-            self.data = nengo.Ensemble(n_neurons=500, dimensions=2, radius=1.5)
-        nengo.Connection(target.info[[0, 4]], self.data)
-
-        with self:
             self.spd = nengo.Ensemble(n_neurons=500, dimensions=2, radius=1.5)
-            def dist_func(x):
-                mid = x[0]+x[1]
-                diff = x[0] - x[1]
-
-                target_separation = 0.8
-                if -0.5<mid<0.5:
-                    return (target_separation - diff)*10
-                else:
-                    return 0
-            nengo.Connection(self.data, self.spd[0], function=dist_func)
-
 
             self.activation = nengo.Node(None, size_in=1)
             nengo.Connection(self.activation, self.spd[1], synapse=None)
 
-        nengo.Connection(self.spd, botnet.base_pos[0],
+        nengo.Connection(order.sw_travel_dist, self.spd[0])
+        nengo.Connection(self.spd, botnet.base_pos[1],
                          function=lambda x: x[0]*x[1], transform=5.0)
 
 
@@ -385,12 +370,15 @@ class TaskGrab(nengo.Network):
         with self:
             self.activation = nengo.Node(None, size_in=1)
             self.behave = nengo.networks.EnsembleArray(n_neurons=400,
-                                n_ensembles=6, ens_dimensions=2, radius=1.5,
+                                n_ensembles=len(behaviours), ens_dimensions=2, radius=1.5,
                                 )
             self.behave.add_output('scaled', function=lambda x: x[0]*x[1])
             for i in range(len(behaviours)):
                 nengo.Connection(self.activation, self.behave.ensembles[i][1],
                                  synapse=None)
+
+            self.grip_mem = nengo.Ensemble(n_neurons=100, dimensions=1, intercepts=nengo.dists.Uniform(0, 1))
+            nengo.Connection(self.grip_mem, self.grip_mem, synapse=0.1, transform=0.1)
 
             self.everything = nengo.Ensemble(n_neurons=100, dimensions=12,
                                     neuron_type=nengo.Direct())
@@ -403,11 +391,12 @@ class TaskGrab(nengo.Network):
                 GRASP_POS = 3
                 STAY_AWAY = 4
                 GRIP = 5
+                MOVE_SIDE = 6
 
                 diff = lx - rx
                 y_av = (ly + ry)/2.0
 
-                result = [0,0,0,0,0,0]
+                result = [0,0,0,0,0,0,0]
                 if (lc < 0.5 or rc < 0.5) and ac < 0.1:
                     result[STAY_AWAY] = 1
                     result[GRASP_POS] = 1
@@ -442,8 +431,17 @@ class TaskGrab(nengo.Network):
             nengo.Connection(self.everything, self.should_close, function=do_should_close,
                              synapse=None)
             nengo.Connection(self.should_close, self.behave.input[10], synapse=0.2)
+
         nengo.Connection(self.should_close, grabbed.has_grabbed,
                          synapse=0.1, transform=2)
+
+        # activate moving sidewards
+        def helper_func(x):
+            if x > 0:
+                return 2
+            else:
+                return 0
+        nengo.Connection(grabbed.has_grabbed, self.behave.input[12], synapse = 0.2, function=helper_func)
 
         nengo.Connection(target.info, self.everything, synapse=None)
 
@@ -519,18 +517,19 @@ with model:
     grasp_pos = GraspPosition(botnet)
     stay_away = StayAway(botnet)
     grip = Grip(botnet)
+    move_side = MoveSidewards(order, botnet)
 
     grabbed = Grabbed(botnet)
 
     task_grab = TaskGrab(target, botnet, [orient_lr, arm_orient_lr, orient_fb,
-                           grasp_pos, stay_away, grip], grabbed)
+                           grasp_pos, stay_away, grip, move_side], grabbed)
 
     task_hold = TaskHold(grip)
 
     task_grab_and_hold = TaskGrabAndHold(task_grab, task_hold, grabbed)
 
     bc = BehaviourControl([orient_lr, arm_orient_lr, orient_fb,
-                           grasp_pos, stay_away, grip, task_grab, task_hold,
+                           grasp_pos, stay_away, grip, move_side, task_grab, task_hold,
                            task_grab_and_hold])
 
 
