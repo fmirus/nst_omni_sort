@@ -4,7 +4,7 @@ import numpy as np
 
 # periods = [2860, 4000, 5000, 6670]
 # freqs = 1000000 / np.array(periods, dtype=float)
-periods = [2500, 2860, 4000, 5000]
+periods = [2500, 2860, 4000, 5000, 6670]
 freqs = np.ceil(1000000 / np.array(periods, dtype=float))
 
 b_direct = False
@@ -391,12 +391,11 @@ class TaskGrab(nengo.Network):
                 GRASP_POS = 3
                 STAY_AWAY = 4
                 GRIP = 5
-                MOVE_SIDE = 6
 
                 diff = lx - rx
                 y_av = (ly + ry)/2.0
 
-                result = [0,0,0,0,0,0,0]
+                result = [0,0,0,0,0,0]
                 if (lc < 0.5 or rc < 0.5) and ac < 0.1:
                     result[STAY_AWAY] = 1
                     result[GRASP_POS] = 1
@@ -435,14 +434,6 @@ class TaskGrab(nengo.Network):
         nengo.Connection(self.should_close, grabbed.has_grabbed,
                          synapse=0.1, transform=2)
 
-        # activate moving sidewards
-        def helper_func(x):
-            if x > 0:
-                return 2
-            else:
-                return 0
-        nengo.Connection(grabbed.has_grabbed, self.behave.input[12], synapse = 0.2, function=helper_func)
-
         nengo.Connection(target.info, self.everything, synapse=None)
 
         for i, b in enumerate(behaviours):
@@ -478,7 +469,7 @@ class Grabbed(nengo.Network):
                          function=opened_gripper)
 
 class TaskGrabAndHold(nengo.Network):
-    def __init__(self, task_grab, task_hold, grabbed):
+    def __init__(self, task_grab, task_hold, grabbed, move_side):
         super(TaskGrabAndHold, self).__init__()
         if b_direct:
             self.config[nengo.Ensemble].neuron_type = nengo.Direct()
@@ -501,6 +492,7 @@ class TaskGrabAndHold(nengo.Network):
             else:
                 return 0
         nengo.Connection(self.choice, task_hold.activation, function=choose_hold)
+        nengo.Connection(self.choice, move_side.activation, function=choose_hold)
 
 
 
@@ -522,11 +514,11 @@ with model:
     grabbed = Grabbed(botnet)
 
     task_grab = TaskGrab(target, botnet, [orient_lr, arm_orient_lr, orient_fb,
-                           grasp_pos, stay_away, grip, move_side], grabbed)
+                           grasp_pos, stay_away, grip], grabbed)
 
     task_hold = TaskHold(grip)
 
-    task_grab_and_hold = TaskGrabAndHold(task_grab, task_hold, grabbed)
+    task_grab_and_hold = TaskGrabAndHold(task_grab, task_hold, grabbed, move_side)
 
     bc = BehaviourControl([orient_lr, arm_orient_lr, orient_fb,
                            grasp_pos, stay_away, grip, move_side, task_grab, task_hold,
