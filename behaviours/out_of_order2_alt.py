@@ -7,7 +7,7 @@ import numpy as np
 periods = [2500, 2860, 4000, 5000, 6670]
 freqs = np.ceil(1000000 / np.array(periods, dtype=float))
 
-use_bot = True
+use_bot = False
 
 if not hasattr(nstbot, 'mybot'):
     if use_bot:
@@ -74,6 +74,20 @@ class OutOfOrder(nengo.Network):
             self.x_input = nengo.Node(None, size_in=len(freqs))
 
             self.sw_travel_dist = nengo.Ensemble(n_neurons=100, dimensions=1)
+            self.distance_mem  = nengo.Ensemble(n_neurons=200, dimensions=1)
+            tau = 0.5
+            synapse = 0.1
+
+            self.control = nengo.Node([0])
+            nengo.Connection(self.control, self.sw_travel_dist.neurons, synapse=None, transform=-5*np.ones((self.sw_travel_dist.n_neurons, 1)))
+            
+            def input_function(x):
+                return x / tau * synapse
+            nengo.Connection(self.sw_travel_dist, self.distance_mem, synapse=synapse, function=input_function)
+            def recurrent_function(y):
+                return (-y / tau) * synapse + y
+                    
+            nengo.Connection(self.distance_mem, self.distance_mem, synapse=synapse, function=recurrent_function)
 
             self.diff = nengo.Ensemble(n_neurons=300, dimensions=len(freqs)-1)
             nengo.Connection(self.x_input[:-1], self.diff, transform=-1)
@@ -171,39 +185,6 @@ class OutOfOrder(nengo.Network):
 
         nengo.Connection(botnet.tracker[::12], self.x_input)
         nengo.Connection(botnet.tracker[3::12], self.c_input)
-
-# copy of OrientFB
-# TODO: change to move sidewards depending on distance calculated in OutOfOrder
-class MoveSidewards(nengo.Network):
-    def __init__(self, target, botnet):
-        super(MoveSidewards, self).__init__()
-        if b_direct:
-            self.config[nengo.Ensemble].neuron_type = nengo.Direct()
-
-        with self:
-            self.data = nengo.Ensemble(n_neurons=500, dimensions=2, radius=1.5)
-        nengo.Connection(target.info[[0, 4]], self.data)
-
-        with self:
-            self.spd = nengo.Ensemble(n_neurons=500, dimensions=2, radius=1.5)
-            def dist_func(x):
-                mid = x[0]+x[1]
-                diff = x[0] - x[1]
-
-                target_separation = 0.8
-                if -0.5<mid<0.5:
-                    return (target_separation - diff)*10
-                else:
-                    return 0
-            nengo.Connection(self.data, self.spd[0], function=dist_func)
-
-
-            self.activation = nengo.Node(None, size_in=1)
-            nengo.Connection(self.activation, self.spd[1], synapse=None)
-
-        nengo.Connection(self.spd, botnet.base_pos[0],
-                         function=lambda x: x[0]*x[1], transform=5.0)
-
 
 
 
