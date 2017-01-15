@@ -90,6 +90,17 @@ class OutOfOrder(nengo.Network):
             self.x_input = nengo.Node(None, size_in=len(freqs))
 
             self.sw_travel_dist = nengo.Ensemble(n_neurons=100, dimensions=1)
+            self.distance_mem  = nengo.Ensemble(n_neurons=200, dimensions=1)
+            tau = 0.5
+            synapse = 0.05
+            
+            def input_function(x):
+                return x / tau * synapse
+            nengo.Connection(self.sw_travel_dist, self.distance_mem, synapse=synapse, function=input_function)
+            def recurrent_function(y):
+                return (-y / tau) * synapse + y
+                    
+            nengo.Connection(self.distance_mem, self.distance_mem, synapse=synapse, function=recurrent_function)
 
             self.diff = nengo.Ensemble(n_neurons=300, dimensions=len(freqs)-1)
             nengo.Connection(self.x_input[:-1], self.diff, transform=-1)
@@ -326,11 +337,36 @@ class MoveSidewards(nengo.Network):
 
         with self:
             self.spd = nengo.Ensemble(n_neurons=500, dimensions=2, radius=1.5)
-
+        
             self.activation = nengo.Node(None, size_in=1)
             nengo.Connection(self.activation, self.spd[1], synapse=None)
 
-        nengo.Connection(order.sw_travel_dist, self.spd[0])
+            # self.prog = nengo.Ensemble(n_neurons=300, dimensions=2, radius=1.5)
+            # self.done = nengo.Ensemble(n_neurons=100, dimensions=1, radius=1.5)
+            # nengo.Connection(self.activation, self.prog[1], synapse=None)
+            # nengo.Connection(self.spd[0], self.prog[0])
+
+            # def are_we_done(x):
+            #     dist = x[0]
+            #     activation = x[1]
+            #     result = 0
+
+            #     if abs(dist) < 0.05 and activation > 0.5:
+            #         # moving sidewards has been deactivated and the distance is close to zero
+            #         # this means we travelled sideways enough and are ready to put the object down
+            #         result = 1
+
+            #     return result
+
+
+            # nengo.Connection(self.prog, self.done, transform=2.0, function=are_we_done)
+
+            # # inhibit speed once we are done
+            # nengo.Connection(self.done, self.spd.neurons,
+            #                     transform=np.ones((self.spd.n_neurons, 1))*-5)
+
+        nengo.Connection(order.distance_mem, self.spd[0])
+        nengo.Connection(self.activation, order.sw_travel_dist.neurons, synapse=None, transform=-5*np.ones((order.sw_travel_dist.n_neurons, 1)))
         nengo.Connection(self.spd, botnet.base_pos[1],
                          function=lambda x: x[0]*x[1], transform=5.0)
 
@@ -340,6 +376,7 @@ class StayAway(nengo.Network):
         super(StayAway, self).__init__()
         with self:
             self.activation = nengo.Node(None, size_in=1)
+
         nengo.Connection(self.activation, botnet.base_pos[0],
                 transform=-1.0)
 
@@ -371,14 +408,13 @@ class TaskGrab(nengo.Network):
             self.activation = nengo.Node(None, size_in=1)
             self.behave = nengo.networks.EnsembleArray(n_neurons=400,
                                 n_ensembles=len(behaviours), ens_dimensions=2, radius=1.5,
+                                intercepts=nengo.dists.Uniform(0.3, 0.9) 
                                 )
+
             self.behave.add_output('scaled', function=lambda x: x[0]*x[1])
             for i in range(len(behaviours)):
                 nengo.Connection(self.activation, self.behave.ensembles[i][1],
                                  synapse=None)
-
-            self.grip_mem = nengo.Ensemble(n_neurons=100, dimensions=1, intercepts=nengo.dists.Uniform(0, 1))
-            nengo.Connection(self.grip_mem, self.grip_mem, synapse=0.1, transform=0.1)
 
             self.everything = nengo.Ensemble(n_neurons=100, dimensions=12,
                                     neuron_type=nengo.Direct())
@@ -405,10 +441,11 @@ class TaskGrab(nengo.Network):
                     if ac > 0.1:
                         result[ARM_ORIENT_LR] = 1
                     else:
-                        if y_av > 0.3:
-                            result[ORIENT_LR] = 0
-                        else:
-                            result[ORIENT_LR] = 1
+                        result[ORIENT_LR] = 1
+                        # if y_av > 0.3:
+                        #     result[ORIENT_LR] = 1
+                        # else:
+                        #     result[ORIENT_LR] = 1
                         result[STAY_AWAY] = 1
                         # if diff > 0.75:   # if we are too close
                         #     result[GRASP_POS] = 0
@@ -439,8 +476,6 @@ class TaskGrab(nengo.Network):
         for i, b in enumerate(behaviours):
             nengo.Connection(self.behave.scaled[i], b.activation, synapse=None)
 
-
-
 class TaskHold(nengo.Network):
     def __init__(self, grip):
         super(TaskHold, self).__init__()
@@ -469,7 +504,7 @@ class Grabbed(nengo.Network):
                          function=opened_gripper)
 
 class TaskGrabAndHold(nengo.Network):
-    def __init__(self, task_grab, task_hold, grabbed, move_side):
+    def __init__(self, task_grab, task_hold, grabbed, move_side, grasp_pos):
         super(TaskGrabAndHold, self).__init__()
         if b_direct:
             self.config[nengo.Ensemble].neuron_type = nengo.Direct()
@@ -477,7 +512,7 @@ class TaskGrabAndHold(nengo.Network):
         with self:
             self.activation = nengo.Node(None, size_in=1)
 
-            self.choice = nengo.Ensemble(n_neurons=300, dimensions=2, radius=1.5)
+            self.choice = nengo.Ensemble(n_neurons=300, dimensions=2, radius=1.5, intercepts=nengo.dists.Uniform(0.4, 0.9))
             nengo.Connection(self.activation, self.choice[0])
         nengo.Connection(grabbed.has_grabbed, self.choice[1])
         def choose_grab(x):
@@ -493,6 +528,7 @@ class TaskGrabAndHold(nengo.Network):
                 return 0
         nengo.Connection(self.choice, task_hold.activation, function=choose_hold)
         nengo.Connection(self.choice, move_side.activation, function=choose_hold)
+        #nengo.Connection(move_side.done, grasp_pos.activation)
 
 
 
@@ -518,7 +554,7 @@ with model:
 
     task_hold = TaskHold(grip)
 
-    task_grab_and_hold = TaskGrabAndHold(task_grab, task_hold, grabbed, move_side)
+    task_grab_and_hold = TaskGrabAndHold(task_grab, task_hold, grabbed, move_side, grasp_pos)
 
     bc = BehaviourControl([orient_lr, arm_orient_lr, orient_fb,
                            grasp_pos, stay_away, grip, move_side, task_grab, task_hold,
