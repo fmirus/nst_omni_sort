@@ -504,7 +504,7 @@ class Grabbed(nengo.Network):
                          function=opened_gripper)
 
 class TaskGrabAndHold(nengo.Network):
-    def __init__(self, task_grab, task_hold, grabbed, move_side, grasp_pos):
+    def __init__(self, task_grab, task_hold, grabbed):
         super(TaskGrabAndHold, self).__init__()
         if b_direct:
             self.config[nengo.Ensemble].neuron_type = nengo.Direct()
@@ -527,8 +527,56 @@ class TaskGrabAndHold(nengo.Network):
             else:
                 return 0
         nengo.Connection(self.choice, task_hold.activation, function=choose_hold)
+
+
+class TaskGrabAndSort(nengo.Network):
+    def __init__(self, task_grab, task_hold, grabbed, move_side, order, grasp_pos):
+        super(TaskGrabAndSort, self).__init__()
+        if b_direct:
+            self.config[nengo.Ensemble].neuron_type = nengo.Direct()
+
+        with self:
+            self.activation = nengo.Node(None, size_in=1)
+
+            # self.choice = nengo.Ensemble(n_neurons=400, dimensions=3, radius=1.5, intercepts=nengo.dists.Uniform(0.4, 0.9))
+            self.choice = nengo.Ensemble(n_neurons=300, dimensions=2, radius=1.5, intercepts=nengo.dists.Uniform(0.4, 0.9))
+            self.put_down = nengo.Ensemble(n_neurons=300, dimensions=2, radius=1.5, intercepts=nengo.dists.Uniform(0.4, 0.9))
+            self.deactivate_grip = nengo.Ensemble(n_neurons=100, dimensions=1, radius=1.5, intercepts=nengo.dists.Uniform(0.4, 0.9))
+            nengo.Connection(self.activation, self.choice[0])
+        nengo.Connection(grabbed.has_grabbed, self.choice[1])
+
+        def should_put_down(x):
+            if abs(x) < 0.05:
+                return 1
+            else:
+                return 0
+        # check if moving sidewards is finished and we should put down the object        
+        nengo.Connection(move_side.activation, self.put_down[0])
+        nengo.Connection(order.distance_mem, self.put_down[1], function=should_put_down)
+
+        nengo.Connection(self.put_down, grasp_pos.activation, function=lambda x: x[0]*x[1])
+        def deactivate_grip_func(x):
+            if x[0] > 0.5 and x[1] > 0.5:
+                return 0
+            else:
+                return 1
+
+        nengo.Connection(self.put_down, self.deactivate_grip, function=deactivate_grip_func)
+        nengo.Connection(self.deactivate_grip, grabbed.has_grabbed.neurons, synapse=0.1, transform=np.ones((grabbed.has_grabbed.n_neurons, 1))*-5)
+
+        def choose_grab(x):
+            if x[1] < 0.5 and x[0]>0.5:
+                return 1
+            else:
+                return 0
+        nengo.Connection(self.choice, task_grab.activation, function=choose_grab)
+        def choose_hold(x):
+            if x[1] > 0.5 and x[0]>0.5:
+                return 1
+            else:
+                return 0
+        nengo.Connection(self.choice, task_hold.activation, function=choose_hold)
         nengo.Connection(self.choice, move_side.activation, function=choose_hold)
-        #nengo.Connection(move_side.done, grasp_pos.activation)
 
 
 
@@ -554,11 +602,12 @@ with model:
 
     task_hold = TaskHold(grip)
 
-    task_grab_and_hold = TaskGrabAndHold(task_grab, task_hold, grabbed, move_side, grasp_pos)
+    task_grab_and_hold = TaskGrabAndHold(task_grab, task_hold, grabbed)
+    task_grab_and_sort = TaskGrabAndSort(task_grab, task_hold, grabbed, move_side, order, grasp_pos)
 
     bc = BehaviourControl([orient_lr, arm_orient_lr, orient_fb,
                            grasp_pos, stay_away, grip, move_side, task_grab, task_hold,
-                           task_grab_and_hold])
+                           task_grab_and_hold., task_grab_and_sort])
 
 
 if __name__ == '__main__':
