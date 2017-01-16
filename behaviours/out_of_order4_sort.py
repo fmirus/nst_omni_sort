@@ -91,7 +91,7 @@ class OutOfOrder(nengo.Network):
 
             self.sw_travel_dist = nengo.Ensemble(n_neurons=100, dimensions=1)
             self.distance_mem  = nengo.Ensemble(n_neurons=200, dimensions=1)
-            tau = 0.17
+            tau = 0.18
             synapse = 0.05
             
             def input_function(x):
@@ -341,34 +341,10 @@ class MoveSidewards(nengo.Network):
             self.activation = nengo.Node(None, size_in=1)
             nengo.Connection(self.activation, self.spd[1], synapse=None)
 
-            # self.prog = nengo.Ensemble(n_neurons=300, dimensions=2, radius=1.5)
-            # self.done = nengo.Ensemble(n_neurons=100, dimensions=1, radius=1.5)
-            # nengo.Connection(self.activation, self.prog[1], synapse=None)
-            # nengo.Connection(self.spd[0], self.prog[0])
-
-            # def are_we_done(x):
-            #     dist = x[0]
-            #     activation = x[1]
-            #     result = 0
-
-            #     if abs(dist) < 0.05 and activation > 0.5:
-            #         # moving sidewards has been deactivated and the distance is close to zero
-            #         # this means we travelled sideways enough and are ready to put the object down
-            #         result = 1
-
-            #     return result
-
-
-            # nengo.Connection(self.prog, self.done, transform=2.0, function=are_we_done)
-
-            # # inhibit speed once we are done
-            # nengo.Connection(self.done, self.spd.neurons,
-            #                     transform=np.ones((self.spd.n_neurons, 1))*-5)
-
         nengo.Connection(order.distance_mem, self.spd[0])
         nengo.Connection(self.activation, order.sw_travel_dist.neurons, synapse=None, transform=-5*np.ones((order.sw_travel_dist.n_neurons, 1)))
         nengo.Connection(self.spd, botnet.base_pos[1],
-                         function=lambda x: x[0]*x[1], transform=5.0)
+                         function=lambda x: x[0]*x[1], transform=8.0)
 
 
 class StayAway(nengo.Network):
@@ -483,7 +459,33 @@ class TaskHold(nengo.Network):
             self.activation = nengo.Node(None, size_in=1)
         nengo.Connection(self.activation, grip.activation, transform=1)
 
+class TaskHoldAndMoveSide(nengo.Network):
+    def __init__(self, grip, move_side):
+        super(TaskHoldAndMoveSide, self).__init__()
+        with self:
+            self.activation = nengo.Node(None, size_in=1)
+        nengo.Connection(self.activation, grip.activation, transform=1)
+        nengo.Connection(self.activation, move_side.activation, transform=1)
 
+class ReachedPutDownPosition(nengo.Network):
+    def __init__(self, move_side):
+        super(ReachedPutDownPosition, self).__init__()
+        with self:
+            self.input = nengo.Ensemble(n_neurons=200, dimensions=2, radius=1.5, intercepts=nengo.dists.Uniform(0.4, 0.9))
+            self.reached_pos = nengo.Ensemble(n_neurons=50, dimensions=1,
+                                              neuron_type=nengo.LIFRate())
+            # recurrent connection
+            nengo.Connection(self.reached_pos, self.reached_pos, synapse=0.05)
+             
+            def reached_pos_func(x):
+                # move side is active and speed is low
+                if x[0] > 0.5 and abs(x[1]) < 0.1:
+                    return 1
+                else:
+                    return 0
+            nengo.Connection(self.input, self.reached_pos, function=reached_pos_func)
+        nengo.Connection(move_side.activation, self.input[0], transform=1.0)
+        nengo.Connection(move_side.spd[0], self.input[1])
 
 class Grabbed(nengo.Network):
     def __init__(self, botnet):
@@ -530,53 +532,42 @@ class TaskGrabAndHold(nengo.Network):
 
 
 class TaskGrabAndSort(nengo.Network):
-    def __init__(self, task_grab, task_hold, grabbed, move_side, order, grasp_pos):
+    def __init__(self, task_grab, task_sidewards, grabbed, move_side, grasp_pos, reached_pos):
         super(TaskGrabAndSort, self).__init__()
         if b_direct:
             self.config[nengo.Ensemble].neuron_type = nengo.Direct()
 
         with self:
             self.activation = nengo.Node(None, size_in=1)
-
-            # self.choice = nengo.Ensemble(n_neurons=400, dimensions=3, radius=1.5, intercepts=nengo.dists.Uniform(0.4, 0.9))
-            self.choice = nengo.Ensemble(n_neurons=300, dimensions=2, radius=1.5, intercepts=nengo.dists.Uniform(0.4, 0.9))
-            self.put_down = nengo.Ensemble(n_neurons=300, dimensions=2, radius=1.5, intercepts=nengo.dists.Uniform(0.4, 0.9))
-            self.deactivate_grip = nengo.Ensemble(n_neurons=100, dimensions=1, radius=1.5, intercepts=nengo.dists.Uniform(0.4, 0.9))
+            # choice will represent the input data to choose between different tasks
+            # choice[0] --> self.activation
+            # choice[1] --> grabbed.has_grabbed
+            # choice[2] --> reached_pos.reached_pos
+            self.choice = nengo.Ensemble(n_neurons=400, dimensions=3, radius=1.5, intercepts=nengo.dists.Uniform(0.25, 0.95))
             nengo.Connection(self.activation, self.choice[0])
         nengo.Connection(grabbed.has_grabbed, self.choice[1])
-
-        def should_put_down(x):
-            if abs(x) < 0.05:
-                return 1
-            else:
-                return 0
-        # check if moving sidewards is finished and we should put down the object        
-        nengo.Connection(move_side.activation, self.put_down[0])
-        nengo.Connection(order.distance_mem, self.put_down[1], function=should_put_down)
-
-        nengo.Connection(self.put_down, grasp_pos.activation, function=lambda x: x[0]*x[1])
-        def deactivate_grip_func(x):
-            if x[0] > 0.5 and x[1] > 0.5:
-                return 0
-            else:
-                return 1
-
-        nengo.Connection(self.put_down, self.deactivate_grip, function=deactivate_grip_func)
-        nengo.Connection(self.deactivate_grip, grabbed.has_grabbed.neurons, synapse=0.1, transform=np.ones((grabbed.has_grabbed.n_neurons, 1))*-5)
+        nengo.Connection(reached_pos.reached_pos, self.choice[2])
 
         def choose_grab(x):
-            if x[1] < 0.5 and x[0]>0.5:
+            if x[0]>0.5 and x[1]<0.5 and x[2]<0.5:
                 return 1
             else:
                 return 0
         nengo.Connection(self.choice, task_grab.activation, function=choose_grab)
-        def choose_hold(x):
-            if x[1] > 0.5 and x[0]>0.5:
+        def choose_sidewards(x):
+            if x[0]>0.5 and x[1]>0.5 and x[2]<0.5:
                 return 1
             else:
                 return 0
-        nengo.Connection(self.choice, task_hold.activation, function=choose_hold)
-        nengo.Connection(self.choice, move_side.activation, function=choose_hold)
+        nengo.Connection(self.choice, task_sidewards.activation, function=choose_sidewards)
+
+        def choose_putdown(x):
+            if x[0]>0.5 and x[1]>0.5 and x[2]>0.5:
+                return 1
+            else:
+                return 0
+
+        nengo.Connection(self.choice, grasp_pos.activation, function=choose_putdown, transform=1.2)
 
 
 
@@ -596,18 +587,20 @@ with model:
     move_side = MoveSidewards(order, botnet)
 
     grabbed = Grabbed(botnet)
+    reached_pos = ReachedPutDownPosition(move_side)
 
     task_grab = TaskGrab(target, botnet, [orient_lr, arm_orient_lr, orient_fb,
                            grasp_pos, stay_away, grip], grabbed)
 
     task_hold = TaskHold(grip)
+    task_hold_sidewards = TaskHoldAndMoveSide(grip, move_side)
 
     task_grab_and_hold = TaskGrabAndHold(task_grab, task_hold, grabbed)
-    task_grab_and_sort = TaskGrabAndSort(task_grab, task_hold, grabbed, move_side, order, grasp_pos)
+    task_grab_and_sort = TaskGrabAndSort(task_grab, task_hold_sidewards, grabbed, move_side, grasp_pos, reached_pos)
 
     bc = BehaviourControl([orient_lr, arm_orient_lr, orient_fb,
                            grasp_pos, stay_away, grip, move_side, task_grab, task_hold,
-                           task_grab_and_hold., task_grab_and_sort])
+                           task_hold_sidewards, task_grab_and_hold, task_grab_and_sort])
 
 
 if __name__ == '__main__':
