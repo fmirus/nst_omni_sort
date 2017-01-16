@@ -91,7 +91,7 @@ class OutOfOrder(nengo.Network):
 
             self.sw_travel_dist = nengo.Ensemble(n_neurons=100, dimensions=1)
             self.distance_mem  = nengo.Ensemble(n_neurons=200, dimensions=1)
-            tau = 0.5
+            tau = 0.17
             synapse = 0.05
             
             def input_function(x):
