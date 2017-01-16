@@ -562,12 +562,11 @@ class TaskGrabAndSort(nengo.Network):
         nengo.Connection(self.choice, task_sidewards.activation, function=choose_sidewards)
 
         def choose_putdown(x):
-            if x[0]>0.5 and x[1]>0.5 and x[2]>0.5:
+            if x[0]>0.5 and x[1]>0.5 and x[2]>0.3:
                 return 1
             else:
                 return 0
-
-        nengo.Connection(self.choice, grasp_pos.activation, function=choose_putdown, transform=1.2)
+        nengo.Connection(self.choice, grasp_pos.activation, synapse=None, function=choose_putdown)
 
 
 
