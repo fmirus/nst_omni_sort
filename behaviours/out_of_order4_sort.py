@@ -303,9 +303,24 @@ class PutDown(nengo.Network):
         super(PutDown, self).__init__()
         with self:
             self.activation = nengo.Node(None, size_in=1)
+            self.active = nengo.Ensemble(n_neurons=100, dimensions=1)
+            nengo.Connection(self.activation, self.active)
+
+            self.inactive = nengo.Ensemble(n_neurons=100, dimensions=1)
+
+            def invert_func(x):
+              return 1-x
+            nengo.Connection(self.active, self.inactive, function=invert_func)
+            self.finished = nengo.Ensemble(n_neurons=100, dimensions=1)
+
+            nengo.Connection(self.finished, self.finished, synapse=0.5, transform=1)
+
+            nengo.Connection(self.inactive, self.finished, transform=-1)
+            nengo.Connection(self.active, self.finished, transform=1)
+
         nengo.Connection(self.activation, botnet.arm[:3],
                 transform=[[-1.86], [-0.28], [2.10]])
-        nengo.Connection(self.activation, botnet.arm[3], synapse=0.75, transform=0)
+        nengo.Connection(self.activation, botnet.arm[3], synapse=0.75)
 
 class ArmOrientLR(nengo.Network):
     def __init__(self, target, botnet, strength=1):
@@ -352,6 +367,64 @@ class MoveSidewards(nengo.Network):
         nengo.Connection(self.spd, botnet.base_pos[1],
                          function=lambda x: x[0]*x[1], transform=8.0)
 
+class FinishTask(nengo.Network):
+    def __init__(self, botnet, deactivate_all):
+        super(FinishTask, self).__init__()
+        if b_direct:
+            self.config[nengo.Ensemble].neuron_type = nengo.Direct()
+
+        with self:
+            self.activation = nengo.None(None, size_in=1)
+            self.active = nengo.Ensemble(n_neurons=100, dimensions=1)
+
+            nengo.Connection(self.activation, self.activate)
+
+            self.inactive = nengo.Ensemble(n_neurons=100, dimensions=1)
+
+            def invert_func(x):
+                return 1-x
+            nengo.Connection(self.active, self.inactive, function=invert_func)
+
+            self.finished = nengo.Ensemble(n_neurons=100, dimensions=1)
+
+            nengo.Connection(self.finished, self.finished, synapse=0.5, transform=1)
+            nengo.Connection(self.inactive, self.finished, transform=-1)
+            nengo.Connection(self.active, self.finished, transform=1)
+
+        # go back
+        nengo.Connection(self.activation, botnet.base_pos[0], synapse=None, transform=-1.0)
+        # deactivate all behaviours now with some delay
+        nengo.Connection(self.activation, deactivate_all.activation, synapse=0.5)
+
+class DeactivateAll(nengo.Network):
+    def __init__(self, task_grab, order, behaviours):
+        super(FinishTask, self).__init__()
+        if b_direct:
+            self.config[nengo.Ensemble].neuron_type = nengo.Direct()
+
+        with self:
+            self.activation = nengo.None(None, size_in=1)
+            self.active = nengo.Ensemble(n_neurons=100, dimensions=1)
+
+            nengo.Connection(self.activation, self.activate)
+
+            self.inactive = nengo.Ensemble(n_neurons=100, dimensions=1)
+
+            def invert_func(x):
+                return 1-x
+            nengo.Connection(self.active, self.inactive, function=invert_func)
+
+        # deactivate all behaviours
+        for b in behaviours:
+            nengo.Connection(self.inactive, b.activation, synapse=None)
+
+        # inhibit all behave ensembles in task_grab whenever this task is active
+        for ens in task_grab.behave.ensembles:
+          nengo.Connection(self.active, ens.neurons, transform=np.ones((ens.n_neurons, 1))*-5)
+
+        # make the order network forget about selected object
+        nengo.Connection(self.activation, order.forget, synapse=None)
+
 
 class StayAway(nengo.Network):
     def __init__(self, botnet):
@@ -388,10 +461,20 @@ class TaskGrab(nengo.Network):
             self.config[nengo.Ensemble].neuron_type = nengo.Direct()
         with self:
             self.activation = nengo.Node(None, size_in=1)
+            self.active = nengo.Ensemble(n_neurons=100, dimensions=1)
+            self.inactive = nengo.Ensemble(n_neurons=100, dimensions=1)
+            def invert_func(x):
+                return 1-x
+            nengo.Connection(self.active, self.inactive, function=invert_func)
+
             self.behave = nengo.networks.EnsembleArray(n_neurons=400,
-                                n_ensembles=len(behaviours), ens_dimensions=2, radius=1.5,
-                                intercepts=nengo.dists.Uniform(0.3, 0.9) 
-                                )
+                                n_ensembles=len(behaviours), ens_dimensions=2, radius=1.5)#, intercepts=nengo.dists.Uniform(0.3, 0.9))
+
+            # TODO: test this!!
+            # inhibit the behave ensembles whenever this task is inactive
+            # for ens in self.behave.ensembles:
+            #   nengo.Connection(self.inactive, ens.neurons, transform=np.ones((ens.n_neurons, 1))*-5)
+            
 
             self.behave.add_output('scaled', function=lambda x: x[0]*x[1])
             for i in range(len(behaviours)):
@@ -523,22 +606,6 @@ class ReachedPutDownPosition(nengo.Network):
         nengo.Connection(grabbed.has_grabbed, self.active)
         nengo.Connection(move_side.spd[0], self.spd)
 
-        #     self.input = nengo.Ensemble(n_neurons=200, dimensions=2, radius=1.5)#, intercepts=nengo.dists.Uniform(0.25, 0.95))
-        #     self.reached_pos = nengo.Ensemble(n_neurons=100, dimensions=1,
-        #                                       neuron_type=nengo.LIFRate())
-        #     # recurrent connection
-        #     # nengo.Connection(self.reached_pos, self.reached_pos, synapse=0.05)
-             
-        #     def reached_pos_func(x):
-        #         # move side is active and speed is low
-        #         if x[0] > 0.5 and abs(x[1]) < 0.1:
-        #             return 1
-        #         else:
-        #             return -1
-        #     nengo.Connection(self.input, self.reached_pos, function=reached_pos_func)
-        # nengo.Connection(move_side.activation, self.input[0], transform=1.0)
-        # nengo.Connection(move_side.spd[0], self.input[1])
-
 class Grabbed(nengo.Network):
     def __init__(self, botnet):
         super(Grabbed, self).__init__()
@@ -584,7 +651,7 @@ class TaskGrabAndHold(nengo.Network):
 
 
 class TaskGrabAndSort(nengo.Network):
-    def __init__(self, task_grab, task_sidewards, grabbed, move_side, put_down, reached_pos):
+    def __init__(self, task_grab, task_sidewards, put_down, finish, grabbed, reached_pos):
         super(TaskGrabAndSort, self).__init__()
         if b_direct:
             self.config[nengo.Ensemble].neuron_type = nengo.Direct()
@@ -599,15 +666,31 @@ class TaskGrabAndSort(nengo.Network):
                 return 1-x
             nengo.Connection(self.active, self.inactive, function=invert_func)
 
+            behaviours = [task_grab, task_sidewards, put_down, finish]
+
+            self.behave = nengo.networks.EnsembleArray(n_neurons=400,
+                                n_ensembles=len(behaviours), ens_dimensions=2, radius=1.5)#, intercepts=nengo.dists.Uniform(0.3, 0.9))
+
+            # inhibit the behave ensembles whenever this task is inactive
+            for ens in self.behave.ensembles:
+              nengo.Connection(self.inactive, ens.neurons, transform=np.ones((ens.n_neurons, 1))*-5)
+            
+
+            self.behave.add_output('scaled', function=lambda x: x[0]*x[1])
+            for i in range(len(behaviours)):
+                nengo.Connection(self.activation, self.behave.ensembles[i][0],
+                                 synapse=None)
+
+
             # choice will represent the input data to choose between different tasks
             # choice[0] --> self.activation
             # choice[1] --> grabbed.has_grabbed
             # choice[2] --> reached_pos.reached_pos
-            self.choice = nengo.Ensemble(n_neurons=300, dimensions=3, radius=1.5)#, intercepts=nengo.dists.Uniform(0.25, 0.95))
-            self.choice_post = nengo.Ensemble(n_neurons=300, dimensions=3, radius=1.5)#, intercepts=nengo.dists.Uniform(0.25, 0.95))
+            self.choice = nengo.Ensemble(n_neurons=300, dimensions=len(behaviours), radius=1.5)#, intercepts=nengo.dists.Uniform(0.25, 0.95))
+            self.choice_post = nengo.Ensemble(n_neurons=300, dimensions=len(behaviours), radius=1.5)#, intercepts=nengo.dists.Uniform(0.25, 0.95))
 
-            self.bg = nengo.networks.BasalGanglia(3, n_neurons_per_ensemble=100)
-            self.thal = nengo.networks.Thalamus(3)
+            self.bg = nengo.networks.BasalGanglia(len(behaviours), n_neurons_per_ensemble=100)
+            self.thal = nengo.networks.Thalamus(len(behaviours))
             nengo.Connection(self.choice_post, self.bg.input)
             nengo.Connection(self.bg.output, self.thal.input)
 
@@ -617,6 +700,7 @@ class TaskGrabAndSort(nengo.Network):
 
         nengo.Connection(grabbed.has_grabbed, self.choice[1])
         nengo.Connection(reached_pos.reached_pos, self.choice[2])
+        nengo.Connection(put_down.finished, self.choice[3])
 
         def choose_grab(x):
             if x[0]>0.5 and x[1]<0.5:
@@ -641,9 +725,20 @@ class TaskGrabAndSort(nengo.Network):
         # nengo.Connection(self.choice, grasp_pos.activation, synapse=None, function=choose_putdown)
         nengo.Connection(self.choice, self.choice_post[2], function=choose_putdown)
 
-        nengo.Connection(self.thal.output[0], task_grab.activation)
-        nengo.Connection(self.thal.output[1], task_sidewards.activation)
-        nengo.Connection(self.thal.output[2], put_down.activation)
+        def choose_finish(x):
+            if x[0] > 0.5 and x[3] > 0.5:
+                return 1
+            else:
+                return 0
+        nengo.Connection(self.choice, self.choice_post[3], function=choose_finish)
+
+        # connect action selected by thalamus network with the according task in the behaviour list
+        for i, behaviour in enumerate(self.behave.ensembles):
+            nengo.Connection(self.thal.output[i], behaviour[1])
+
+        # nengo.Connection(self.thal.output[0], task_grab.activation)
+        # nengo.Connection(self.thal.output[1], task_sidewards.activation)
+        # nengo.Connection(self.thal.output[2], put_down.activation)
 
 
 
@@ -673,7 +768,11 @@ with model:
     task_hold_sidewards = TaskHoldAndMoveSide(grip, move_side)
 
     task_grab_and_hold = TaskGrabAndHold(task_grab, task_hold, grabbed)
-    task_grab_and_sort = TaskGrabAndSort(task_grab, task_hold_sidewards, grabbed, move_side, put_down, reached_pos)
+
+    deactivate_all = DeactivateAll(task_grab, order, [task_hold_sidewards, put_down])
+    finish = FinishTask(botnet, deactivate_all)
+
+    task_grab_and_sort = TaskGrabAndSort(task_grab, task_hold_sidewards, put_down, finish, grabbed, reached_pos)
 
     bc = BehaviourControl([orient_lr, arm_orient_lr, orient_fb,
                            grasp_pos, stay_away, grip, move_side, task_grab, task_hold,
