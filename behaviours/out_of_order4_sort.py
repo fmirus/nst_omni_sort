@@ -189,8 +189,11 @@ class OutOfOrder(nengo.Network):
 
 
             self.forget = nengo.Node([0])
+            self.forget_in = nengo.Node(None, size_in=1)
             for ens in self.evidence.ensembles:
                 nengo.Connection(self.forget, ens.neurons,
+                                 transform=-5*np.ones((ens.n_neurons, 1)))
+                nengo.Connection(self.forget_in, ens.neurons,
                                  transform=-5*np.ones((ens.n_neurons, 1)))
 
 
@@ -374,10 +377,10 @@ class FinishTask(nengo.Network):
             self.config[nengo.Ensemble].neuron_type = nengo.Direct()
 
         with self:
-            self.activation = nengo.None(None, size_in=1)
+            self.activation = nengo.Node(None, size_in=1)
             self.active = nengo.Ensemble(n_neurons=100, dimensions=1)
 
-            nengo.Connection(self.activation, self.activate)
+            nengo.Connection(self.activation, self.active)
 
             self.inactive = nengo.Ensemble(n_neurons=100, dimensions=1)
 
@@ -398,15 +401,15 @@ class FinishTask(nengo.Network):
 
 class DeactivateAll(nengo.Network):
     def __init__(self, task_grab, order, behaviours):
-        super(FinishTask, self).__init__()
+        super(DeactivateAll, self).__init__()
         if b_direct:
             self.config[nengo.Ensemble].neuron_type = nengo.Direct()
 
         with self:
-            self.activation = nengo.None(None, size_in=1)
+            self.activation = nengo.Node(None, size_in=1)
             self.active = nengo.Ensemble(n_neurons=100, dimensions=1)
 
-            nengo.Connection(self.activation, self.activate)
+            nengo.Connection(self.activation, self.active)
 
             self.inactive = nengo.Ensemble(n_neurons=100, dimensions=1)
 
@@ -415,15 +418,15 @@ class DeactivateAll(nengo.Network):
             nengo.Connection(self.active, self.inactive, function=invert_func)
 
         # deactivate all behaviours
-        for b in behaviours:
-            nengo.Connection(self.inactive, b.activation, synapse=None)
+        # for b in behaviours:
+        #     nengo.Connection(self.inactive, b.activation, synapse=None)
 
         # inhibit all behave ensembles in task_grab whenever this task is active
         for ens in task_grab.behave.ensembles:
           nengo.Connection(self.active, ens.neurons, transform=np.ones((ens.n_neurons, 1))*-5)
 
         # make the order network forget about selected object
-        nengo.Connection(self.activation, order.forget, synapse=None)
+        nengo.Connection(self.activation, order.forget_in, synapse=None)
 
 
 class StayAway(nengo.Network):
@@ -661,33 +664,27 @@ class TaskGrabAndSort(nengo.Network):
             
             self.active = nengo.Ensemble(n_neurons=100, dimensions=1)
             nengo.Connection(self.activation, self.active)
+            self.inactive_node = nengo.Node([1])
             self.inactive = nengo.Ensemble(n_neurons=100, dimensions=1)
-            def invert_func(x):
-                return 1-x
-            nengo.Connection(self.active, self.inactive, function=invert_func)
+            
+            nengo.Connection(self.inactive_node, self.inactive)
+            nengo.Connection(self.activation, self.inactive.neurons, transform=np.ones((self.inactive.n_neurons, 1))*-5)
 
             behaviours = [task_grab, task_sidewards, put_down, finish]
 
             self.behave = nengo.networks.EnsembleArray(n_neurons=400,
-                                n_ensembles=len(behaviours), ens_dimensions=2, radius=1.5)#, intercepts=nengo.dists.Uniform(0.3, 0.9))
+                                n_ensembles=len(behaviours), ens_dimensions=1, radius=1.5)#, intercepts=nengo.dists.Uniform(0.3, 0.9))
 
             # inhibit the behave ensembles whenever this task is inactive
             for ens in self.behave.ensembles:
               nengo.Connection(self.inactive, ens.neurons, transform=np.ones((ens.n_neurons, 1))*-5)
-            
-
-            self.behave.add_output('scaled', function=lambda x: x[0]*x[1])
-            for i in range(len(behaviours)):
-                nengo.Connection(self.activation, self.behave.ensembles[i][0],
-                                 synapse=None)
-
 
             # choice will represent the input data to choose between different tasks
             # choice[0] --> self.activation
             # choice[1] --> grabbed.has_grabbed
             # choice[2] --> reached_pos.reached_pos
-            self.choice = nengo.Ensemble(n_neurons=300, dimensions=len(behaviours), radius=1.5)#, intercepts=nengo.dists.Uniform(0.25, 0.95))
-            self.choice_post = nengo.Ensemble(n_neurons=300, dimensions=len(behaviours), radius=1.5)#, intercepts=nengo.dists.Uniform(0.25, 0.95))
+            self.choice = nengo.Ensemble(n_neurons=100*len(behaviours), dimensions=len(behaviours), radius=1.5)#, intercepts=nengo.dists.Uniform(0.25, 0.95))
+            self.choice_post = nengo.Ensemble(n_neurons=100*len(behaviours), dimensions=len(behaviours), radius=1.5)#, intercepts=nengo.dists.Uniform(0.25, 0.95))
 
             self.bg = nengo.networks.BasalGanglia(len(behaviours), n_neurons_per_ensemble=100)
             self.thal = nengo.networks.Thalamus(len(behaviours))
@@ -695,8 +692,6 @@ class TaskGrabAndSort(nengo.Network):
             nengo.Connection(self.bg.output, self.thal.input)
 
             nengo.Connection(self.activation, self.choice[0])
-
-            # nengo.Connection(self.inactive, self.choice_post.neurons, transform=np.ones((self.choice_post.n_neurons, 1))*-5)
 
         nengo.Connection(grabbed.has_grabbed, self.choice[1])
         nengo.Connection(reached_pos.reached_pos, self.choice[2])
@@ -734,7 +729,10 @@ class TaskGrabAndSort(nengo.Network):
 
         # connect action selected by thalamus network with the according task in the behaviour list
         for i, behaviour in enumerate(self.behave.ensembles):
-            nengo.Connection(self.thal.output[i], behaviour[1])
+            nengo.Connection(self.thal.output[i], behaviour)
+
+        for i, b in enumerate(behaviours):
+            nengo.Connection(self.behave.ensembles[i], b.activation, synapse=None)
 
         # nengo.Connection(self.thal.output[0], task_grab.activation)
         # nengo.Connection(self.thal.output[1], task_sidewards.activation)
