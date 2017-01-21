@@ -318,10 +318,39 @@ class PutDown(nengo.Network):
 
             nengo.Connection(self.finished, self.finished, synapse=0.5, transform=1)
 
-            nengo.Connection(self.inactive, self.finished, transform=-1)
-            nengo.Connection(self.active, self.finished, transform=1)
+            self.diff = nengo.Ensemble(
+                    100, 1,
+                    intercepts=nengo.dists.Exponential(0.15, 0., 1.),
+                    encoders=nengo.dists.Choice([[1]]),
+                    eval_points=nengo.dists.Uniform(0., 1.))
+            self.peak = nengo.Ensemble(100, 1)
+            self.peak_inverted_init = nengo.Node([1])
+            self.peak_inverted = nengo.Ensemble(n_neurons=100, dimensions=1)
 
-        nengo.Connection(self.activation, botnet.arm[:3],
+
+            nengo.Connection(self.peak_inverted_init, self.peak_inverted)
+            nengo.Connection(self.peak, self.peak_inverted.neurons, transform=np.ones((self.peak_inverted.n_neurons, 1))*-5)    
+
+            # this node and ensemble are intended to reset the peak from the outside to make reached pos be available again after one 
+            # whole task has been completed
+            self.reset_node = nengo.Node([0])
+            self.reset = nengo.Ensemble(n_neurons=100, dimensions=1)
+            nengo.Connection(self.reset_node, self.reset)
+            nengo.Connection(self.reset, self.peak.neurons, transform=np.ones((self.peak.n_neurons, 1))*-5)
+                
+            tau = 0.1
+            timescale = 0.01
+            dt = 0.001
+            nengo.Connection(self.active, self.diff, synapse=tau/2)
+            nengo.Connection(self.diff, self.peak, synapse=tau/2, transform=dt / timescale / (1 - np.exp(-dt / tau)))
+            nengo.Connection(self.peak, self.diff, synapse=tau/2, transform=-1)
+            nengo.Connection(self.peak, self.peak, synapse=tau)
+
+            nengo.Connection(self.peak_inverted, self.finished, transform=-1)
+            nengo.Connection(self.peak, self.finished, transform=1)
+
+
+        nengo.Connection(self.activation, botnet.arm[:3], #synapse=None, 
                 transform=[[-1.86], [-0.28], [2.10]])
         nengo.Connection(self.activation, botnet.arm[3], synapse=0.75)
 
@@ -368,10 +397,10 @@ class MoveSidewards(nengo.Network):
         nengo.Connection(order.distance_mem, self.spd[0])
         nengo.Connection(self.activation, order.sw_travel_dist.neurons, synapse=None, transform=-5*np.ones((order.sw_travel_dist.n_neurons, 1)))
         nengo.Connection(self.spd, botnet.base_pos[1],
-                         function=lambda x: x[0]*x[1], transform=8.0)
+                         function=lambda x: x[0]*x[1], transform=5.0)
 
 class FinishTask(nengo.Network):
-    def __init__(self, botnet, deactivate_all):
+    def __init__(self, botnet):
         super(FinishTask, self).__init__()
         if b_direct:
             self.config[nengo.Ensemble].neuron_type = nengo.Direct()
@@ -381,12 +410,10 @@ class FinishTask(nengo.Network):
             self.active = nengo.Ensemble(n_neurons=100, dimensions=1)
 
             nengo.Connection(self.activation, self.active)
-
+            self.inactive_node = nengo.Node([1])
             self.inactive = nengo.Ensemble(n_neurons=100, dimensions=1)
 
-            def invert_func(x):
-                return 1-x
-            nengo.Connection(self.active, self.inactive, function=invert_func)
+            nengo.Connection(self.active, self.inactive.neurons, transform=np.ones((self.inactive.n_neurons, 1))*-5)
 
             self.finished = nengo.Ensemble(n_neurons=100, dimensions=1)
 
@@ -395,40 +422,9 @@ class FinishTask(nengo.Network):
             nengo.Connection(self.active, self.finished, transform=1)
 
         # go back
+        # TODO: stop after going back for a while
         nengo.Connection(self.activation, botnet.base_pos[0], synapse=None, transform=-1.0)
-        # deactivate all behaviours now with some delay
-        nengo.Connection(self.activation, deactivate_all.activation, synapse=0.5)
-
-class DeactivateAll(nengo.Network):
-    def __init__(self, task_grab, order, behaviours):
-        super(DeactivateAll, self).__init__()
-        if b_direct:
-            self.config[nengo.Ensemble].neuron_type = nengo.Direct()
-
-        with self:
-            self.activation = nengo.Node(None, size_in=1)
-            self.active = nengo.Ensemble(n_neurons=100, dimensions=1)
-
-            nengo.Connection(self.activation, self.active)
-
-            self.inactive = nengo.Ensemble(n_neurons=100, dimensions=1)
-
-            def invert_func(x):
-                return 1-x
-            nengo.Connection(self.active, self.inactive, function=invert_func)
-
-        # deactivate all behaviours
-        # for b in behaviours:
-        #     nengo.Connection(self.inactive, b.activation, synapse=None)
-
-        # inhibit all behave ensembles in task_grab whenever this task is active
-        for ens in task_grab.behave.ensembles:
-          nengo.Connection(self.active, ens.neurons, transform=np.ones((ens.n_neurons, 1))*-5)
-
-        # make the order network forget about selected object
-        nengo.Connection(self.activation, order.forget_in, synapse=None)
-
-
+        
 class StayAway(nengo.Network):
     def __init__(self, botnet):
         super(StayAway, self).__init__()
@@ -576,7 +572,19 @@ class ReachedPutDownPosition(nengo.Network):
                     encoders=nengo.dists.Choice([[1]]),
                     eval_points=nengo.dists.Uniform(0., 1.))
             self.peak = nengo.Ensemble(100, 1)
+            self.peak_inverted_init = nengo.Node([1])
             self.peak_inverted = nengo.Ensemble(n_neurons=100, dimensions=1)
+
+
+            nengo.Connection(self.peak_inverted_init, self.peak_inverted)
+            nengo.Connection(self.peak, self.peak_inverted.neurons, transform=np.ones((self.peak_inverted.n_neurons, 1))*-5)    
+
+            # this node and ensemble are intended to reset the peak from the outside to make reached pos be available again after one 
+            # whole task has been completed
+            self.reset_node = nengo.Node([0])
+            self.reset = nengo.Ensemble(n_neurons=100, dimensions=1)
+            nengo.Connection(self.reset_node, self.reset)
+            nengo.Connection(self.reset, self.peak.neurons, transform=np.ones((self.peak.n_neurons, 1))*-5)
                 
             tau = 0.1
             timescale = 0.01
@@ -585,15 +593,11 @@ class ReachedPutDownPosition(nengo.Network):
             nengo.Connection(self.diff, self.peak, synapse=tau/2, transform=dt / timescale / (1 - np.exp(-dt / tau)))
             nengo.Connection(self.peak, self.diff, synapse=tau/2, transform=-1)
             nengo.Connection(self.peak, self.peak, synapse=tau)
-            def invert_func(x):
-              return 1-x
-            nengo.Connection(self.peak, self.peak_inverted, function=invert_func)
-
-
+            
             # recurrent connection
             nengo.Connection(self.reached_pos, self.reached_pos, synapse=0.1)
             def reached_pos_func(x):
-                if abs(x) < 0.1:
+                if abs(x) < 0.13:
                     return 1
                 else:
                     return -1
@@ -692,14 +696,14 @@ class TaskGrabAndSort(nengo.Network):
         nengo.Connection(put_down.finished, self.choice[3])
 
         def choose_grab(x):
-            if x[0]>0.5 and x[1]<0.5:
+            if x[0]>0.5 and x[1]<0.5 and x[2]<0.3 and x[3]<0.1:
                 return 1
             else:
                 return 0
         # nengo.Connection(self.choice, task_grab.activation, function=choose_grab)
         nengo.Connection(self.choice, self.choice_post[0], function=choose_grab)
         def choose_sidewards(x):
-            if x[0]>0.5 and x[1]>0.5 and x[2]<0.3:
+            if x[0]>0.5 and x[1]>0.5 and x[2]<0.3 and x[3]<0.1:
                 return 1
             else:
                 return 0
@@ -707,7 +711,7 @@ class TaskGrabAndSort(nengo.Network):
         nengo.Connection(self.choice, self.choice_post[1], function=choose_sidewards)
 
         def choose_putdown(x):
-            if x[0]>0.5 and x[2]>0.3:
+            if x[0]>0.5 and x[2]>0.3 and x[3]<0.1:
                 return 1
             else:
                 return 0
@@ -715,7 +719,7 @@ class TaskGrabAndSort(nengo.Network):
         nengo.Connection(self.choice, self.choice_post[2], function=choose_putdown)
 
         def choose_finish(x):
-            if x[0] > 0.5 and x[3] > 0.5:
+            if x[0]>0.5 and x[2]>0.3 and x[3]>0.1:
                 return 1
             else:
                 return 0
@@ -761,8 +765,7 @@ with model:
 
     task_grab_and_hold = TaskGrabAndHold(task_grab, task_hold, grabbed)
 
-    deactivate_all = DeactivateAll(task_grab, order, [task_hold_sidewards, put_down])
-    finish = FinishTask(botnet, deactivate_all)
+    finish = FinishTask(botnet)
 
     task_grab_and_sort = TaskGrabAndSort(task_grab, task_hold_sidewards, put_down, finish, grabbed, reached_pos)
 
