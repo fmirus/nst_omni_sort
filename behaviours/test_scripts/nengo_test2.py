@@ -33,9 +33,16 @@ with model:
   nengo.Connection(diff, peak, synapse=tau/2, transform=dt / timescale / (1 - np.exp(-dt / tau)))
   nengo.Connection(peak, diff, synapse=tau/2, transform=-1)
   nengo.Connection(peak, peak, synapse=tau)
-  def invert_func(x):
-    return 1-x
-  nengo.Connection(peak, peak_inverted, function=invert_func)
+  # def invert_func(x):
+  #   return 1-x
+  peak_inverted_init = nengo.Node([1])
+  nengo.Connection(peak_inverted_init, peak_inverted)
+  nengo.Connection(peak, peak_inverted.neurons, transform=np.ones((peak_inverted.n_neurons, 1))*-5)
+
+  reset_peak_node = nengo.Node([0])
+  reset_peak = nengo.Ensemble(n_neurons=100, dimensions=1)
+  nengo.Connection(reset_peak_node, reset_peak)
+  nengo.Connection(reset_peak, peak.neurons, transform=np.ones((peak.n_neurons, 1))*-5)
 
   nengo.Connection(reached_pos, reached_pos, synapse=0.1)
   # recurrent connection
