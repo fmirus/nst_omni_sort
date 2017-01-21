@@ -465,24 +465,18 @@ class TaskGrab(nengo.Network):
         with self:
             self.activation = nengo.Node(None, size_in=1)
             self.active = nengo.Ensemble(n_neurons=100, dimensions=1)
+            self.inactive_node = nengo.Node([1])
             self.inactive = nengo.Ensemble(n_neurons=100, dimensions=1)
-            def invert_func(x):
-                return 1-x
-            nengo.Connection(self.active, self.inactive, function=invert_func)
+            
+            nengo.Connection(self.inactive_node, self.inactive)
+            nengo.Connection(self.activation, self.inactive.neurons, transform=np.ones((self.inactive.n_neurons, 1))*-5)
 
             self.behave = nengo.networks.EnsembleArray(n_neurons=400,
-                                n_ensembles=len(behaviours), ens_dimensions=2, radius=1.5)#, intercepts=nengo.dists.Uniform(0.3, 0.9))
+                                n_ensembles=len(behaviours), ens_dimensions=1, radius=1.5)#, intercepts=nengo.dists.Uniform(0.3, 0.9))
 
-            # TODO: test this!!
             # inhibit the behave ensembles whenever this task is inactive
-            # for ens in self.behave.ensembles:
-            #   nengo.Connection(self.inactive, ens.neurons, transform=np.ones((ens.n_neurons, 1))*-5)
-            
-
-            self.behave.add_output('scaled', function=lambda x: x[0]*x[1])
-            for i in range(len(behaviours)):
-                nengo.Connection(self.activation, self.behave.ensembles[i][1],
-                                 synapse=None)
+            for ens in self.behave.ensembles:
+              nengo.Connection(self.inactive, ens.neurons, transform=np.ones((ens.n_neurons, 1))*-5)            
 
             self.everything = nengo.Ensemble(n_neurons=100, dimensions=12,
                                     neuron_type=nengo.Direct())
@@ -527,7 +521,7 @@ class TaskGrab(nengo.Network):
                         #     result[GRASP_POS] = 0
 
                 return result
-            nengo.Connection(self.everything, self.behave.input[::2],
+            nengo.Connection(self.everything, self.behave.input,
                              function=do_it)
 
             self.should_close = nengo.Ensemble(n_neurons=200, dimensions=1,
@@ -542,7 +536,7 @@ class TaskGrab(nengo.Network):
                 return result
             nengo.Connection(self.everything, self.should_close, function=do_should_close,
                              synapse=None)
-            nengo.Connection(self.should_close, self.behave.input[10], synapse=0.1)
+            nengo.Connection(self.should_close, self.behave.input[5], synapse=0.1)
 
         nengo.Connection(self.should_close, grabbed.has_grabbed,
                          synapse=0.05, transform=2)
@@ -550,7 +544,7 @@ class TaskGrab(nengo.Network):
         nengo.Connection(target.info, self.everything, synapse=None)
 
         for i, b in enumerate(behaviours):
-            nengo.Connection(self.behave.scaled[i], b.activation, synapse=None)
+            nengo.Connection(self.behave.ensembles[i], b.activation, synapse=None)
 
 class TaskHold(nengo.Network):
     def __init__(self, grip):
