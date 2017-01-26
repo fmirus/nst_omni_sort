@@ -23,7 +23,7 @@ if not hasattr(nstbot, 'mybot'):
         bot.tracker('retina_arm', True, tracking_freqs=freqs, streaming_period=10000)
         bot.send('motors', 'init_motors', '!G31610\n!G41170\n!G51276\n!G6210\n')
         #bot.send('motors', 'init_motors_speed', '!P520\n')
-        bot.set_arm_speed([30,40,40,80])
+        bot.set_arm_speed([30,40,60,80])
     else:
         class DummyBot(object):
             def base_pos(self, x, msg_period):
@@ -351,8 +351,9 @@ class PutDown(nengo.Network):
 
 
         nengo.Connection(self.activation, botnet.arm[:3], #synapse=None, 
-                transform=[[-1.86], [-0.28], [2.10]])
+                transform=[[-1.9], [-0.28], [2.40]])
         nengo.Connection(self.activation, botnet.arm[3], synapse=0.75)
+        nengo.Connection(self.activation, botnet.base_pos[0], transform=-2.0)
 
 class ArmOrientLR(nengo.Network):
     def __init__(self, target, botnet, strength=1):
@@ -408,8 +409,12 @@ class FinishTask(nengo.Network):
         with self:
             self.activation = nengo.Node(None, size_in=1)
             self.active = nengo.Ensemble(n_neurons=100, dimensions=1)
+            self.retreat = nengo.Ensemble(n_neurons=100, dimensions=1)
+            self.stop_retreat = nengo.Ensemble(n_neurons=100, dimensions=1)
 
             nengo.Connection(self.activation, self.active)
+            nengo.Connection(self.activation, self.retreat)
+
             self.inactive_node = nengo.Node([1])
             self.inactive = nengo.Ensemble(n_neurons=100, dimensions=1)
 
@@ -420,10 +425,17 @@ class FinishTask(nengo.Network):
             nengo.Connection(self.finished, self.finished, synapse=0.5, transform=1)
             nengo.Connection(self.inactive, self.finished, transform=-1)
             nengo.Connection(self.active, self.finished, transform=1)
+            def stop_retreat_func(x):
+                if x > 0.7:
+                    return 1
+                else:
+                    return 0
+            nengo.Connection(self.finished, self.stop_retreat, function=stop_retreat_func)
+            nengo.Connection(self.stop_retreat, self.retreat.neurons, transform=np.ones((self.retreat.n_neurons, 1))*-5)
 
         # go back
         # TODO: stop after going back for a while
-        nengo.Connection(self.activation, botnet.base_pos[0], synapse=None, transform=-1.0)
+        nengo.Connection(self.retreat, botnet.base_pos[0], synapse=None, transform=-1.0)
         
 class StayAway(nengo.Network):
     def __init__(self, botnet):
@@ -696,14 +708,14 @@ class TaskGrabAndSort(nengo.Network):
         nengo.Connection(put_down.finished, self.choice[3])
 
         def choose_grab(x):
-            if x[0]>0.5 and x[1]<0.5 and x[2]<0.3 and x[3]<0.1:
+            if x[0]>0.5 and x[1]<0.5 and x[2]<0.3 and x[3]<0.2:
                 return 1
             else:
                 return 0
         # nengo.Connection(self.choice, task_grab.activation, function=choose_grab)
         nengo.Connection(self.choice, self.choice_post[0], function=choose_grab)
         def choose_sidewards(x):
-            if x[0]>0.5 and x[1]>0.5 and x[2]<0.3 and x[3]<0.1:
+            if x[0]>0.5 and x[1]>0.5 and x[2]<0.3 and x[3]<0.2:
                 return 1
             else:
                 return 0
@@ -711,7 +723,7 @@ class TaskGrabAndSort(nengo.Network):
         nengo.Connection(self.choice, self.choice_post[1], function=choose_sidewards)
 
         def choose_putdown(x):
-            if x[0]>0.5 and x[2]>0.3 and x[3]<0.1:
+            if x[0]>0.5 and x[2]>0.3 and x[3]<0.2:
                 return 1
             else:
                 return 0
@@ -719,7 +731,7 @@ class TaskGrabAndSort(nengo.Network):
         nengo.Connection(self.choice, self.choice_post[2], function=choose_putdown)
 
         def choose_finish(x):
-            if x[0]>0.5 and x[2]>0.3 and x[3]>0.1:
+            if x[0]>0.5 and x[3]>0.2:
                 return 1
             else:
                 return 0
