@@ -282,12 +282,15 @@ class MoveSidewards(nengo.Network):
 
                 pos = (left_lx + right_rx)/2.
 
-                return -pos
+                return pos
 
             nengo.Connection(self.x_data, self.position[0], function=compute_pos)
             nengo.Connection(self.activation, self.position[1])
 
-            nengo.Connection(self.position, botnet.base_pos[1], function=lambda x: x[0]*x[1], transform=5.0)
+            # move sidewards to the middle between left and right target stimulus
+            nengo.Connection(self.position, botnet.base_pos[1], function=lambda x: x[0]*x[1], transform=-5.0)
+            # and keep the robot centered to the goal position
+            nengo.Connection(self.position, botnet.base_pos[2], function=lambda x: x[0]*x[1], transform=-0.5)
 
 
 model = nengo.Network()

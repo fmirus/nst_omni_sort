@@ -89,19 +89,6 @@ class OutOfOrder(nengo.Network):
 
             self.x_input = nengo.Node(None, size_in=len(freqs))
 
-            self.sw_travel_dist = nengo.Ensemble(n_neurons=100, dimensions=1)
-            self.distance_mem  = nengo.Ensemble(n_neurons=200, dimensions=1)
-            tau = 0.25
-            synapse = 0.05
-            
-            def input_function(x):
-                return x / tau * synapse
-            nengo.Connection(self.sw_travel_dist, self.distance_mem, synapse=synapse, function=input_function)
-            def recurrent_function(y):
-                return (-y / tau) * synapse + y
-                    
-            nengo.Connection(self.distance_mem, self.distance_mem, synapse=synapse, function=recurrent_function)
-
             self.diff = nengo.Ensemble(n_neurons=300, dimensions=len(freqs)-1)
             nengo.Connection(self.x_input[:-1], self.diff, transform=-1)
             nengo.Connection(self.x_input[1:], self.diff, transform=1)
@@ -109,6 +96,8 @@ class OutOfOrder(nengo.Network):
             self.min_neurons = nengo.Ensemble(n_neurons=200, dimensions=1)
 
             self.odd = nengo.Ensemble(n_neurons=100*len(freqs), dimensions=len(freqs))
+            self.left = nengo.Ensemble(n_neurons=100*len(freqs), dimensions=len(freqs))
+            self.right = nengo.Ensemble(n_neurons=100*len(freqs), dimensions=len(freqs))
 
             def min_func(x):
                 return min(x)
@@ -127,6 +116,16 @@ class OutOfOrder(nengo.Network):
 
             nengo.Connection(self.diff, self.odd, function=worst_func)
 
+            def get_left(x):
+              ind = max(np.argmax(x)-1,0)
+              return np.eye(len(freqs))[ind]
+            nengo.Connection(self.odd, self.left, function=get_left)
+
+            def get_right(x):
+              ind = min(np.argmax(x)+1, len(freqs)-1)
+              return np.eye(len(freqs))[ind]
+            nengo.Connection(self.odd, self.right, function=get_right)
+
             self.negative_min = nengo.Ensemble(n_neurons=100, dimensions=1,
                                               encoders=nengo.dists.Choice([[1]]),
                                               intercepts=nengo.dists.Uniform(0.4, 0.9))
@@ -138,29 +137,9 @@ class OutOfOrder(nengo.Network):
                     return 1
 
             nengo.Connection(self.min_neurons, self.negative_min, function=neg_min_func)
-
-            def calc_distance(x):
-                result = 2*abs(min(x))
-                ind_min = np.argmin(x)
-                ind_max = np.argmax(x)
-
-                direction = 1
-
-                if ind_max > ind_min:
-                    # TODO: check if this sign is correct for the traveling direction
-                    direction = -1
-
-                result *= direction
-
-                return  result
-
-            nengo.Connection(self.diff, self.sw_travel_dist, function=calc_distance)
             # inhibit odd and sidewards travel distance ensembles in case we have only positive distances
             nengo.Connection(self.negative_min, self.odd.neurons,
                                 transform=np.ones((self.odd.n_neurons, 1))*-5)
-
-            nengo.Connection(self.negative_min, self.sw_travel_dist.neurons,
-                                transform=np.ones((self.sw_travel_dist.n_neurons, 1))*-5)
 
             # build up evidence for the target
             self.evidence = nengo.networks.EnsembleArray(n_neurons=100, n_ensembles=len(freqs),
@@ -169,6 +148,21 @@ class OutOfOrder(nengo.Network):
             nengo.Connection(self.evidence.output, self.evidence.input, synapse=0.1, transform=1.1)
             nengo.Connection(self.evidence.output, self.evidence.input, synapse=0.1,
                                 transform=-0.7*(1-np.eye(len(freqs))))
+
+            self.evidence_left = nengo.networks.EnsembleArray(n_neurons=100, n_ensembles=len(freqs),
+                                                         encoders=nengo.dists.Choice([[1]]),
+                                                         intercepts=nengo.dists.Uniform(0, 1))
+            nengo.Connection(self.evidence_left.output, self.evidence_left.input, synapse=0.1, transform=1.1)
+            nengo.Connection(self.evidence_left.output, self.evidence_left.input, synapse=0.1,
+                                transform=-0.7*(1-np.eye(len(freqs))))
+
+            self.evidence_right = nengo.networks.EnsembleArray(n_neurons=100, n_ensembles=len(freqs),
+                                                         encoders=nengo.dists.Choice([[1]]),
+                                                         intercepts=nengo.dists.Uniform(0, 1))
+            nengo.Connection(self.evidence_right.output, self.evidence_right.input, synapse=0.1, transform=1.1)
+            nengo.Connection(self.evidence_right.output, self.evidence_right.input, synapse=0.1,
+                                transform=-0.7*(1-np.eye(len(freqs))))
+
 
             # we want to inhibit the odd population in case we don`t see all stimuli
             # TODO: implement exception: we don`t want to inhibit in case we already grabbed one object
@@ -186,11 +180,25 @@ class OutOfOrder(nengo.Network):
             #                     transform=np.ones((self.odd.n_neurons, 1))*-5)
 
             nengo.Connection(self.odd, self.evidence.input, transform=0.2)
+            nengo.Connection(self.left, self.evidence_left.input, transform=0.2)
+            nengo.Connection(self.right, self.evidence_right.input, transform=0.2)
 
 
             self.forget = nengo.Node([0])
             self.forget_in = nengo.Node(None, size_in=1)
             for ens in self.evidence.ensembles:
+                nengo.Connection(self.forget, ens.neurons,
+                                 transform=-5*np.ones((ens.n_neurons, 1)))
+                nengo.Connection(self.forget_in, ens.neurons,
+                                 transform=-5*np.ones((ens.n_neurons, 1)))
+
+            for ens in self.evidence_left.ensembles:
+                nengo.Connection(self.forget, ens.neurons,
+                                 transform=-5*np.ones((ens.n_neurons, 1)))
+                nengo.Connection(self.forget_in, ens.neurons,
+                                 transform=-5*np.ones((ens.n_neurons, 1)))
+
+            for ens in self.evidence_right.ensembles:
                 nengo.Connection(self.forget, ens.neurons,
                                  transform=-5*np.ones((ens.n_neurons, 1)))
                 nengo.Connection(self.forget_in, ens.neurons,
@@ -232,6 +240,43 @@ class TargetInfo(nengo.Network):
             nengo.Connection(order.evidence.ensembles[i],
                              post.neurons,
                              transform=-5*np.ones((post.n_neurons, 1)))
+
+
+class BorderTargetInfo(nengo.Network):
+    def __init__(self, order, direction='left'):
+        super(BorderTargetInfo, self).__init__()
+        with self:
+            self.info_array = nengo.networks.EnsembleArray(n_neurons=100, n_ensembles=12)
+            self.info = self.info_array.output
+
+            self.freqs = nengo.networks.EnsembleArray(n_neurons=100, n_ensembles=12*len(freqs))
+            for i in range(len(freqs)):
+                nengo.Connection(self.freqs.output[i*12:(i+1)*12], self.info_array.input, synapse=None)
+
+            self.inhibit = nengo.networks.EnsembleArray(n_neurons=100, n_ensembles=len(freqs),
+                                                         encoders=nengo.dists.Choice([[1]]),
+                                                         intercepts=nengo.dists.Uniform(0.3, 0.9))
+            self.bias = nengo.Node(1)
+            nengo.Connection(self.bias, self.inhibit.input, transform=np.ones((len(freqs), 1)))
+            for i in range(len(freqs)):
+                for j in range(12):
+                    post = self.freqs.ensembles[i*12+j]
+                    nengo.Connection(self.inhibit.ensembles[i], post.neurons,
+                                     transform=-5*np.ones((post.n_neurons, 1)))
+
+
+
+        nengo.Connection(botnet.tracker, self.freqs.input, synapse=None)
+        for i in range(len(freqs)):
+            post = self.inhibit.ensembles[i]
+            if direction == 'left':
+                nengo.Connection(order.evidence_left.ensembles[i],
+                                 post.neurons,
+                                 transform=-5*np.ones((post.n_neurons, 1)))
+            elif direction == 'right':
+                nengo.Connection(order.evidence_right.ensembles[i],
+                                 post.neurons,
+                                 transform=-5*np.ones((post.n_neurons, 1)))
 
 
 class OrientLR(nengo.Network):
@@ -351,12 +396,12 @@ class PutDown(nengo.Network):
 
 
         nengo.Connection(self.activation, botnet.arm[:3], #synapse=None, 
-                transform=[[-1.9], [-0.28], [2.40]])
+                transform=[[-1.95], [-0.28], [2.40]])
         nengo.Connection(self.activation, botnet.arm[3], synapse=0.75)
         nengo.Connection(self.activation, botnet.base_pos[0], transform=-2.0)
 
 class ArmOrientLR(nengo.Network):
-    def __init__(self, target, botnet, strength=1):
+    def __init__(self, target, botnet, strength=0.5):
         super(ArmOrientLR, self).__init__()
         if b_direct:
             self.config[nengo.Ensemble].neuron_type = nengo.Direct()
@@ -382,23 +427,35 @@ class ArmOrientLR(nengo.Network):
                          function=lambda x: x[0]*x[1],
                          transform=strength)
 
-
 class MoveSidewards(nengo.Network):
-    def __init__(self, order, botnet):
+    def __init__(self, botnet, target_left, target_right):
         super(MoveSidewards, self).__init__()
         if b_direct:
             self.config[nengo.Ensemble].neuron_type = nengo.Direct()
 
         with self:
-            self.spd = nengo.Ensemble(n_neurons=500, dimensions=2, radius=1.5)
-        
             self.activation = nengo.Node(None, size_in=1)
-            nengo.Connection(self.activation, self.spd[1], synapse=None)
+            self.x_data = nengo.Ensemble(n_neurons=1000, dimensions=12, radius=3)
+        nengo.Connection(target_left.info[[0,3,4,7,8,11]], self.x_data[:6])
+        nengo.Connection(target_right.info[[0,3,4,7,8,11]], self.x_data[6:])
 
-        nengo.Connection(order.distance_mem, self.spd[0])
-        nengo.Connection(self.activation, order.sw_travel_dist.neurons, synapse=None, transform=-5*np.ones((order.sw_travel_dist.n_neurons, 1)))
-        nengo.Connection(self.spd, botnet.base_pos[1],
-                         function=lambda x: x[0]*x[1], transform=5.0)
+        with self:
+            self.position = nengo.Ensemble(n_neurons=300, dimensions=3)
+            def compute_pos(x):
+                left_lx = x[0]
+                right_rx = x[8]
+
+                pos = (left_lx + right_rx)/2.
+
+                return pos
+
+            nengo.Connection(self.x_data, self.position[0], function=compute_pos)
+            nengo.Connection(self.activation, self.position[1])
+
+            # move sidewards to the middle between left and right target stimulus
+            nengo.Connection(self.position, botnet.base_pos[1], function=lambda x: x[0]*x[1], transform=-2.5)
+            # and keep the robot centered to the goal position
+            nengo.Connection(self.position, botnet.base_pos[2], function=lambda x: x[0]*x[1], transform=-0.5)
 
 class FinishTask(nengo.Network):
     def __init__(self, botnet):
@@ -587,7 +644,6 @@ class ReachedPutDownPosition(nengo.Network):
             self.peak_inverted_init = nengo.Node([1])
             self.peak_inverted = nengo.Ensemble(n_neurons=100, dimensions=1)
 
-
             nengo.Connection(self.peak_inverted_init, self.peak_inverted)
             nengo.Connection(self.peak, self.peak_inverted.neurons, transform=np.ones((self.peak_inverted.n_neurons, 1))*-5)    
 
@@ -607,17 +663,17 @@ class ReachedPutDownPosition(nengo.Network):
             nengo.Connection(self.peak, self.peak, synapse=tau)
             
             # recurrent connection
-            nengo.Connection(self.reached_pos, self.reached_pos, synapse=0.1)
+            nengo.Connection(self.reached_pos, self.reached_pos, synapse=0.05)
             def reached_pos_func(x):
-                if abs(x) < 0.13:
+                if abs(x) < 0.2:
                     return 1
                 else:
                     return -1
-            nengo.Connection(self.spd, self.reached_pos, function=reached_pos_func)
+            nengo.Connection(self.spd, self.reached_pos, synapse=None, function=reached_pos_func)
             nengo.Connection(self.peak_inverted, self.reached_pos.neurons, transform=np.ones((self.reached_pos.n_neurons, 1))*-2)
         
         nengo.Connection(grabbed.has_grabbed, self.active)
-        nengo.Connection(move_side.spd[0], self.spd)
+        nengo.Connection(move_side.position[0], self.spd)
 
 class Grabbed(nengo.Network):
     def __init__(self, botnet):
@@ -763,7 +819,10 @@ with model:
     grasp_pos = GraspPosition(botnet)
     stay_away = StayAway(botnet)
     grip = Grip(botnet)
-    move_side = MoveSidewards(order, botnet)
+    target_left = BorderTargetInfo(order, direction='left')
+    target_right = BorderTargetInfo(order, direction='right')
+
+    move_side = MoveSidewards(botnet, target_left, target_right)
     put_down = PutDown(botnet)
 
     grabbed = Grabbed(botnet)
