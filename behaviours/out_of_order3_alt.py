@@ -7,7 +7,8 @@ import numpy as np
 periods = [2500, 2860, 4000, 5000, 6670]
 freqs = np.ceil(1000000 / np.array(periods, dtype=float))
 b_direct = False
-use_bot = True
+b_plot = False
+use_bot = False
 
 if not hasattr(nstbot, 'mybot'):
     if use_bot:
@@ -167,8 +168,18 @@ class OutOfOrder(nengo.Network):
             nengo.Connection(self.left, self.evidence_left.input, transform=0.2)
             nengo.Connection(self.right, self.evidence_right.input, transform=0.2)
 
-
-            self.forget = nengo.Node([0])
+            if not b_plot:
+                self.forget = nengo.Node([0])
+            else:
+                def forget_func(t):
+                    if t < 2.0:
+                        return 0
+                    elif t >= 2.0 and t < 2.5: 
+                        return 1
+                    elif t >= 2.5:
+                        return 0
+                
+                self.forget = nengo.Node(forget_func)
             self.forget_in = nengo.Node(None, size_in=1)
             for ens in self.evidence.ensembles:
                 nengo.Connection(self.forget, ens.neurons,
@@ -187,9 +198,27 @@ class OutOfOrder(nengo.Network):
                                  transform=-5*np.ones((ens.n_neurons, 1)))
                 nengo.Connection(self.forget_in, ens.neurons,
                                  transform=-5*np.ones((ens.n_neurons, 1)))
+            self.p_x = nengo.Probe(self.x_input, synapse=0.01)
+            self.p_forget = nengo.Probe(self.forget, synapse=0.01)
+            self.p_evidence = nengo.Probe(self.evidence.output, synapse=0.01)
+            self.p_evidence_left = nengo.Probe(self.evidence_left.output, synapse=0.01)
+            self.p_evidence_right = nengo.Probe(self.evidence_right.output, synapse=0.01)
+            self.p_diff = nengo.Probe(self.diff, synapse=0.01)
+            self.p_odd = nengo.Probe(self.odd, synapse=0.01)
+            self.p_neg_min = nengo.Probe(self.negative_min, synapse=0.01)
 
-
-        nengo.Connection(botnet.tracker[::12], self.x_input)
+        if not b_plot:
+            nengo.Connection(botnet.tracker[::12], self.x_input)  
+        else:
+            def input_func(t):
+                if t < 0.5:
+                    return [-0.8, -0.4, 0.0, 0.4, 0.8]
+                elif t >= 0.5 and t < 1.5: 
+                    return [-0.8, -0.4, 0.6, 0.4, 0.8]
+                elif t >= 1.5:
+                    return [-0.8, 0.2, -0.2, 0.4, 0.8]
+            artificial_input = nengo.Node(input_func)
+            nengo.Connection(artificial_input, self.x_input)
         nengo.Connection(botnet.tracker[3::12], self.c_input)
 
 
@@ -303,3 +332,105 @@ with model:
     target_right = BorderTargetInfo(order, direction='right')
 
     move_side = MoveSidewards(botnet, target_left, target_right)
+
+if __name__ == '__main__':
+
+    plot_data_file = '/home/flo/data/out_of_order.h5'
+    import os
+    import h5py
+    if os.path.isfile(plot_data_file):
+        # data file exists, so simulation ran before
+        # no need for running simulation again, so just get data for plotting
+        with h5py.File(plot_data_file,'r') as hf:
+            print('List of arrays in this file: \n', hf.keys())
+            trange = np.array(hf.get('trange'))
+            p_x = np.array(hf.get('p_x'))
+            p_forget = np.array(hf.get('p_forget'))
+            p_diff = np.array(hf.get('p_diff'))
+            p_evidence = np.array(hf.get('p_evidence'))
+            p_neg_min = np.array(hf.get('p_neg_min'))
+            p_evidence_left = np.array(hf.get('p_evidence_left'))
+            p_odd = np.array(hf.get('p_odd'))
+            p_evidence_right = np.array(hf.get('p_evidence_right'))
+    else:
+        # data file does not exists, so run simulation
+        sim = nengo.Simulator(model)
+        sim.run(3)
+
+        # safe data to h5 file and prepare data for ploitting
+        with h5py.File(plot_data_file, 'w') as hf:
+            hf.create_dataset('trange', data=sim.trange(), compression="gzip", compression_opts=9)
+            hf.create_dataset('p_x', data=sim.data[order.p_x], compression="gzip", compression_opts=9)
+            hf.create_dataset('p_forget', data=sim.data[order.p_forget], compression="gzip", compression_opts=9)
+            hf.create_dataset('p_diff', data=sim.data[order.p_diff], compression="gzip", compression_opts=9)
+            hf.create_dataset('p_evidence', data=sim.data[order.p_evidence], compression="gzip", compression_opts=9)
+            hf.create_dataset('p_neg_min', data=sim.data[order.p_neg_min], compression="gzip", compression_opts=9)
+            hf.create_dataset('p_evidence_left', data=sim.data[order.p_evidence_left], compression="gzip", compression_opts=9)
+            hf.create_dataset('p_odd', data=sim.data[order.p_odd], compression="gzip", compression_opts=9)
+            hf.create_dataset('p_evidence_right', data=sim.data[order.p_evidence_right], compression="gzip", compression_opts=9)
+            trange = sim.trange()
+            p_x = sim.data[order.p_x]
+            p_forget = sim.data[order.p_forget]
+            p_diff = sim.data[order.p_diff]
+            p_evidence = sim.data[order.p_evidence]
+            p_neg_min = sim.data[order.p_neg_min]
+            p_evidence_left = sim.data[order.p_evidence_left]
+            p_odd = sim.data[order.p_odd]
+            p_evidence_right = sim.data[order.p_evidence_right]
+
+    # plot data
+    import matplotlib.pyplot as plt
+
+    labels = [str(int(freqs[ind])) + ' Hz stim' for ind in range(len(freqs))]
+    diff_labels = ['diff(' + str(int(freqs[ind +1])) + ',' + str(int(freqs[ind])) + ')' for ind in range(len(freqs)-1)]
+    middle = len(trange)/2
+    time = trange
+    fig = plt.figure(1)
+    fig.suptitle('Out of Order network', fontsize=14, fontweight='bold')
+    ax = fig.add_subplot(421)
+    plt.plot(trange, p_x, lw=2)
+    plt.legend(labels=labels)
+    ax.set_title('x-positions of stimuli in DVS image')
+    ax.set_ylim([-1,1])
+
+    ax = fig.add_subplot(422)
+    plt.plot(trange, p_forget, lw=2)
+    ax.set_title('forget-node for evidence networks')
+    ax.set_ylim([-0.1,1.1])
+
+    ax = fig.add_subplot(423)
+    plt.plot(trange, p_diff, lw=2)
+    plt.legend(labels=diff_labels)
+    ax.set_title('pariwise difference of x-positions')
+
+    ax = fig.add_subplot(424)
+    plt.plot(trange, p_evidence, lw=2)
+    plt.legend(labels=labels, loc=2)
+    plt.axvline(time[middle], color = "k")
+    ax.set_title('evidence for target object')
+
+    ax = fig.add_subplot(425)
+    plt.plot(trange, p_neg_min, lw=2)
+    ax.set_title('negative minimum ensemble')
+    ax.set_ylim([-0.1,1.1])
+
+    ax = fig.add_subplot(426)
+    plt.plot(trange, p_evidence_left, lw=2)
+    plt.legend(labels=labels, loc=2)
+    plt.axvline(time[middle], color = "k")
+    ax.set_title('evidence for left neighbour object')
+
+    ax = fig.add_subplot(427)
+    plt.plot(trange, p_odd, lw=2)
+    plt.legend(labels=labels)
+    ax.set_title('most odd object based on pairwise difference')
+    ax.set_xlabel('time')
+
+    ax = fig.add_subplot(428)
+    plt.plot(trange, p_evidence_right, lw=2)
+    plt.legend(labels=labels, loc=2)
+    plt.axvline(time[middle], color = "k")
+    ax.set_title('evidence for right neighbour object')
+    ax.set_xlabel('time')
+
+    plt.show()
