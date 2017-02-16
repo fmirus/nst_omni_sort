@@ -8,7 +8,7 @@ periods = [2500, 2860, 4000, 5000, 6670]
 freqs = np.ceil(1000000 / np.array(periods, dtype=float))
 
 b_direct = False
-
+b_plot = False
 use_bot = True
 
 if not hasattr(nstbot, 'mybot'):
@@ -204,6 +204,17 @@ class OutOfOrder(nengo.Network):
                 nengo.Connection(self.forget_in, ens.neurons,
                                  transform=-5*np.ones((ens.n_neurons, 1)))
 
+            if b_plot:
+                self.p_x = nengo.Probe(self.x_input, synapse=0.01)
+                self.p_forget = nengo.Probe(self.forget, synapse=0.01)
+                self.p_evidence = nengo.Probe(self.evidence.output, synapse=0.01)
+                self.p_evidence_left = nengo.Probe(self.evidence_left.output, synapse=0.01)
+                self.p_evidence_right = nengo.Probe(self.evidence_right.output, synapse=0.01)
+                self.p_diff = nengo.Probe(self.diff, synapse=0.01)
+                self.p_odd = nengo.Probe(self.odd, synapse=0.01)
+                self.p_neg_min = nengo.Probe(self.negative_min, synapse=0.01)
+
+
 
         nengo.Connection(botnet.tracker[::12], self.x_input)
         nengo.Connection(botnet.tracker[3::12], self.c_input)
@@ -231,6 +242,9 @@ class TargetInfo(nengo.Network):
                     post = self.freqs.ensembles[i*12+j]
                     nengo.Connection(self.inhibit.ensembles[i], post.neurons,
                                      transform=-5*np.ones((post.n_neurons, 1)))
+            if b_plot:
+                # probe target info
+                self.p_info = nengo.Probe(self.info, synapse=0.01)
 
 
 
@@ -263,6 +277,9 @@ class BorderTargetInfo(nengo.Network):
                     post = self.freqs.ensembles[i*12+j]
                     nengo.Connection(self.inhibit.ensembles[i], post.neurons,
                                      transform=-5*np.ones((post.n_neurons, 1)))
+            if b_plot:
+                # probe target info
+                self.p_info = nengo.Probe(self.info, synapse=0.01)
 
 
 
@@ -302,7 +319,11 @@ class OrientLR(nengo.Network):
 
             self.activation = nengo.Node(None, size_in=1)
             nengo.Connection(self.activation, self.x_pos[1], synapse=None)
-
+            if b_plot:
+                # probe data
+                self.p_x = nengo.Probe(self.x_data, synapse=0.01)
+                self.p_x_pos = nengo.Probe(self.x_pos, synapse=0.01)
+                self.p_act = nengo.Probe(self.activation, synapse=0.01)
         nengo.Connection(self.x_pos, botnet.base_pos[2],
                          function=lambda x: x[0]*x[1],
                          transform=-1)
@@ -333,6 +354,12 @@ class OrientFB(nengo.Network):
 
 
             self.activation = nengo.Node(None, size_in=1)
+            if b_plot:
+                # probe data
+                self.p_act = nengo.Probe(self.activation, synapse=0.01)
+                self.p_data = nengo.Probe(self.data, synapse=0.01)
+                self.p_spd = nengo.Probe(self.spd, synapse=0.01)
+
             nengo.Connection(self.activation, self.spd[1], synapse=None)
 
         nengo.Connection(self.spd, botnet.base_pos[0],
@@ -343,6 +370,9 @@ class GraspPosition(nengo.Network):
         super(GraspPosition, self).__init__()
         with self:
             self.activation = nengo.Node(None, size_in=1)
+            if b_plot:
+                # probe data 
+                self.p_act = nengo.Probe(self.activation, synapse=0.01)
         nengo.Connection(self.activation, botnet.arm,
                 transform=[[-1.86], [-0.28], [2.10], [0]])
 
@@ -394,6 +424,11 @@ class PutDown(nengo.Network):
             nengo.Connection(self.peak_inverted, self.finished, transform=-1)
             nengo.Connection(self.peak, self.finished, transform=1)
 
+            if b_plot:
+                # probe data
+                self.p_act = nengo.Probe(self.activation, synapse=0.01)
+
+
 
         nengo.Connection(self.activation, botnet.arm[:3], #synapse=None, 
                 transform=[[-1.95], [-0.28], [2.40]])
@@ -423,6 +458,12 @@ class ArmOrientLR(nengo.Network):
             self.activation = nengo.Node(None, size_in=1)
             nengo.Connection(self.activation, self.x_pos[1], synapse=None)
 
+            if b_plot:
+                # probe data 
+                self.p_act = nengo.Probe(self.activation, synapse=0.01)
+                self.p_x = nengo.Probe(self.x_data, synapse=0.01)
+                self.p_x_pos = nengo.Probe(self.x_pos, synapse=0.01)
+
         nengo.Connection(self.x_pos, botnet.base_pos[2],
                          function=lambda x: x[0]*x[1],
                          transform=strength)
@@ -451,6 +492,11 @@ class MoveSidewards(nengo.Network):
 
             nengo.Connection(self.x_data, self.position[0], function=compute_pos)
             nengo.Connection(self.activation, self.position[1])
+            if b_plot:
+                # probe data
+                self.p_act = nengo.Probe(self.activation, synapse=0.01)
+                self.p_x = nengo.Probe(self.x_data, synapse=0.01)
+                self.p_pos = nengo.Probe(self.position, synapse=0.01)
 
             # move sidewards to the middle between left and right target stimulus
             nengo.Connection(self.position, botnet.base_pos[1], function=lambda x: x[0]*x[1], transform=-2.5)
@@ -489,6 +535,9 @@ class FinishTask(nengo.Network):
                     return 0
             nengo.Connection(self.finished, self.stop_retreat, function=stop_retreat_func)
             nengo.Connection(self.stop_retreat, self.retreat.neurons, transform=np.ones((self.retreat.n_neurons, 1))*-5)
+            if b_plot:
+                # probe data 
+                self.p_act = nengo.Probe(self.activation, synapse=0.01)
 
         # go back
         # TODO: stop after going back for a while
@@ -499,6 +548,9 @@ class StayAway(nengo.Network):
         super(StayAway, self).__init__()
         with self:
             self.activation = nengo.Node(None, size_in=1)
+            if b_plot:
+                # probe data
+                self.p_act = nengo.Probe(self.activation, synapse=0.01)
 
         nengo.Connection(self.activation, botnet.base_pos[0],
                 transform=-1.0)
@@ -508,6 +560,9 @@ class Grip(nengo.Network):
         super(Grip, self).__init__()
         with self:
             self.activation = nengo.Node(None, size_in=1)
+            if b_plot:
+                # probe data
+                self.p_act = nengo.Probe(self.activation, synapse=0.01)
         nengo.Connection(self.activation, botnet.arm[3],
                 transform=-0.4)
 
@@ -543,8 +598,7 @@ class TaskGrab(nengo.Network):
             for ens in self.behave.ensembles:
               nengo.Connection(self.inactive, ens.neurons, transform=np.ones((ens.n_neurons, 1))*-5)            
 
-            self.everything = nengo.Ensemble(n_neurons=100, dimensions=12,
-                                    neuron_type=nengo.Direct())
+            self.everything = nengo.Ensemble(n_neurons=100, dimensions=12,neuron_type=nengo.Direct())
 
             self.y_av = nengo.Ensemble(n_neurons=100, dimensions=1)
             nengo.Connection(self.everything, self.y_av, function=lambda x: (x[1]+x[5])/2.0)
@@ -602,6 +656,11 @@ class TaskGrab(nengo.Network):
             nengo.Connection(self.everything, self.should_close, function=do_should_close,
                              synapse=None)
             nengo.Connection(self.should_close, self.behave.input[5], synapse=0.1)
+
+            if b_plot:
+                # probe data 
+                self.p_act = nengo.Probe(self.activation, synapse=0.01)
+                self.p_everything = nengo.Probe(self.everything, synapse=0.01)
 
         nengo.Connection(self.should_close, grabbed.has_grabbed,
                          synapse=0.05, transform=2)
@@ -685,6 +744,9 @@ class Grabbed(nengo.Network):
                 if x<0.5: return 0
                 else: return 1
             nengo.Connection(self.has_grabbed, self.has_grabbed, synapse=0.1)
+            if b_plot:
+                # probe data
+                self.p_grabbed = nengo.Probe(self.has_grabbed, synapse=0.01)
         def opened_gripper(x):
             if x > -0.1:
                 return -1
@@ -758,6 +820,15 @@ class TaskGrabAndSort(nengo.Network):
             nengo.Connection(self.bg.output, self.thal.input)
 
             nengo.Connection(self.activation, self.choice[0])
+
+            if b_plot:
+                # probe data
+                self.p_act = nengo.Probe(self.activation, synapse=0.01)
+                self.p_choice = nengo.Probe(self.choice, synapse=0.01)
+                self.p_choice_post = nengo.Probe(self.choice_post, synapse=0.01)
+                self.p_bg = nengo.Probe(self.bg.output, synapse=0.01)
+                self.p_thal = nengo.Probe(self.thal.output, synapse=0.01)
+                self.p_behave = nengo.Probe(self.behave.output, synapse=0.01)
 
         nengo.Connection(grabbed.has_grabbed, self.choice[1])
         nengo.Connection(reached_pos.reached_pos, self.choice[2])
@@ -847,8 +918,58 @@ with model:
 
 if __name__ == '__main__':
     with model:
-        start = nengo.Node([1])
-        nengo.Connection(start, task_grab_and_hold.activation)
+        def input_func(t):
+            if t < 0.1:
+                return 0
+            else:
+                return 1
+        start = nengo.Node(input_func)
+        nengo.Connection(start, task_grab_and_sort.activation)
     sim = nengo.Simulator(model)
-    while True:
-        sim.run(10)
+    sim.run(1)
+
+    if b_plot:
+        plot_data_file = '/home/flo/data/task_sort_robot.h5'
+        import os
+        import h5py
+        if not os.path.isfile(plot_data_file):
+            # safe data to h5 file and prepare data for ploitting
+            with h5py.File(plot_data_file, 'w') as hf:
+                hf.create_dataset('trange', data=sim.trange(), compression="gzip", compression_opts=9)
+                hf.create_dataset('order_p_x', data=sim.data[order.p_x], compression="gzip", compression_opts=9)
+                hf.create_dataset('order_p_forget', data=sim.data[order.p_forget], compression="gzip", compression_opts=9)
+                hf.create_dataset('order_p_diff', data=sim.data[order.p_diff], compression="gzip", compression_opts=9)
+                hf.create_dataset('order_p_evidence', data=sim.data[order.p_evidence], compression="gzip", compression_opts=9)
+                hf.create_dataset('order_p_neg_min', data=sim.data[order.p_neg_min], compression="gzip", compression_opts=9)
+                hf.create_dataset('order_p_evidence_left', data=sim.data[order.p_evidence_left], compression="gzip", compression_opts=9)
+                hf.create_dataset('order_p_odd', data=sim.data[order.p_odd], compression="gzip", compression_opts=9)
+                hf.create_dataset('order_p_evidence_right', data=sim.data[order.p_evidence_right], compression="gzip", compression_opts=9)
+                hf.create_dataset('target_p_info', data=sim.data[target.p_info], compression="gzip", compression_opts=9)
+                hf.create_dataset('target_left_p_info', data=sim.data[target_left.p_info], compression="gzip", compression_opts=9)
+                hf.create_dataset('target_right_p_info', data=sim.data[target_right.p_info], compression="gzip", compression_opts=9)
+                hf.create_dataset('orientLR_p_x', data=sim.data[orient_lr.p_x], compression="gzip", compression_opts=9)
+                hf.create_dataset('orientLR_p_x_pos', data=sim.data[orient_lr.p_x_pos], compression="gzip", compression_opts=9)
+                hf.create_dataset('orientLR_p_act', data=sim.data[orient_lr.p_act], compression="gzip", compression_opts=9)
+                hf.create_dataset('orientFB_p_act', data=sim.data[orient_fb.p_act], compression="gzip", compression_opts=9)
+                hf.create_dataset('orientFB_p_data', data=sim.data[orient_fb.p_data], compression="gzip", compression_opts=9)
+                hf.create_dataset('orientFB_p_spd', data=sim.data[orient_fb.p_spd], compression="gzip", compression_opts=9)
+                hf.create_dataset('grasp_p_act', data=sim.data[grasp_pos.p_act], compression="gzip", compression_opts=9)
+                hf.create_dataset('putdown_p_act', data=sim.data[put_down.p_act], compression="gzip", compression_opts=9)
+                hf.create_dataset('arm_orientLR_p_act', data=sim.data[arm_orient_lr.p_act], compression="gzip", compression_opts=9)
+                hf.create_dataset('arm_orientLR_p_x', data=sim.data[arm_orient_lr.p_x], compression="gzip", compression_opts=9)    
+                hf.create_dataset('arm_orientLR_p_x_pos', data=sim.data[arm_orient_lr.p_x_pos], compression="gzip", compression_opts=9)
+                hf.create_dataset('move_side_p_act', data=sim.data[move_side.p_act], compression="gzip", compression_opts=9)
+                hf.create_dataset('move_side_p_x', data=sim.data[move_side.p_x], compression="gzip", compression_opts=9)
+                hf.create_dataset('move_side_p_pos', data=sim.data[move_side.p_pos], compression="gzip", compression_opts=9)
+                hf.create_dataset('finish_p_act', data=sim.data[finish.p_act], compression="gzip", compression_opts=9)
+                hf.create_dataset('stay_away_p_act', data=sim.data[stay_away.p_act], compression="gzip", compression_opts=9)
+                hf.create_dataset('grip_p_act', data=sim.data[grip.p_act], compression="gzip", compression_opts=9)
+                hf.create_dataset('task_grab_p_act', data=sim.data[task_grab.p_act], compression="gzip", compression_opts=9)
+                hf.create_dataset('task_grab_p_everything', data=sim.data[task_grab.p_everything], compression="gzip", compression_opts=9)
+                hf.create_dataset('grabbed_p_has_grabbed', data=sim.data[grabbed.p_grabbed], compression="gzip", compression_opts=9)
+                hf.create_dataset('task_sort_p_act', data=sim.data[task_grab_and_sort.p_act], compression="gzip", compression_opts=9)
+                hf.create_dataset('task_sort_p_choice', data=sim.data[task_grab_and_sort.p_choice], compression="gzip", compression_opts=9)
+                hf.create_dataset('task_sort_p_choice_post', data=sim.data[task_grab_and_sort.p_choice_post], compression="gzip", compression_opts=9)
+                hf.create_dataset('task_sort_p_bg', data=sim.data[task_grab_and_sort.p_bg], compression="gzip", compression_opts=9)
+                hf.create_dataset('task_sort_p_thal', data=sim.data[task_grab_and_sort.p_thal], compression="gzip", compression_opts=9)
+                hf.create_dataset('task_sort_p_behave', data=sim.data[task_grab_and_sort.p_behave], compression="gzip", compression_opts=9)

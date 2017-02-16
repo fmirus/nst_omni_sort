@@ -168,7 +168,8 @@ class OutOfOrder(nengo.Network):
             nengo.Connection(self.left, self.evidence_left.input, transform=0.2)
             nengo.Connection(self.right, self.evidence_right.input, transform=0.2)
 
-            if not b_plot:
+            use_forget = True
+            if not use_forget:
                 self.forget = nengo.Node([0])
             else:
                 def forget_func(t):
@@ -335,7 +336,7 @@ with model:
 
 if __name__ == '__main__':
 
-    plot_data_file = '/home/flo/data/out_of_order.h5'
+    plot_data_file = '/home/flo/data/out_of_order_robot1.h5'
     import os
     import h5py
     if os.path.isfile(plot_data_file):
@@ -384,53 +385,54 @@ if __name__ == '__main__':
     labels = [str(int(freqs[ind])) + ' Hz stim' for ind in range(len(freqs))]
     diff_labels = ['diff(' + str(int(freqs[ind +1])) + ',' + str(int(freqs[ind])) + ')' for ind in range(len(freqs)-1)]
     middle = len(trange)/2
+    trange *=10
     time = trange
     fig = plt.figure(1)
     fig.suptitle('Out of Order network', fontsize=14, fontweight='bold')
     ax = fig.add_subplot(421)
     plt.plot(trange, p_x, lw=2)
     plt.legend(labels=labels)
-    ax.set_title('x-positions of stimuli in DVS image')
+    ax.set_title('a) x-positions of stimuli in DVS image')
     ax.set_ylim([-1,1])
 
     ax = fig.add_subplot(422)
     plt.plot(trange, p_forget, lw=2)
-    ax.set_title('forget-node for evidence networks')
+    ax.set_title('e) forget-node for evidence networks')
     ax.set_ylim([-0.1,1.1])
 
     ax = fig.add_subplot(423)
     plt.plot(trange, p_diff, lw=2)
     plt.legend(labels=diff_labels)
-    ax.set_title('pariwise difference of x-positions')
+    ax.set_title('b) pariwise difference of x-positions')
 
     ax = fig.add_subplot(424)
     plt.plot(trange, p_evidence, lw=2)
     plt.legend(labels=labels, loc=2)
     plt.axvline(time[middle], color = "k")
-    ax.set_title('evidence for target object')
+    ax.set_title('f) evidence for target object')
 
     ax = fig.add_subplot(425)
     plt.plot(trange, p_neg_min, lw=2)
-    ax.set_title('negative minimum ensemble')
+    ax.set_title('c) negative minimum ensemble')
     ax.set_ylim([-0.1,1.1])
 
     ax = fig.add_subplot(426)
     plt.plot(trange, p_evidence_left, lw=2)
     plt.legend(labels=labels, loc=2)
     plt.axvline(time[middle], color = "k")
-    ax.set_title('evidence for left neighbour object')
+    ax.set_title('g) evidence for left neighbour object')
 
     ax = fig.add_subplot(427)
     plt.plot(trange, p_odd, lw=2)
     plt.legend(labels=labels)
-    ax.set_title('most odd object based on pairwise difference')
-    ax.set_xlabel('time')
+    ax.set_title('d) most odd object based on pairwise difference')
+    ax.set_xlabel('time (s)')
 
     ax = fig.add_subplot(428)
     plt.plot(trange, p_evidence_right, lw=2)
     plt.legend(labels=labels, loc=2)
     plt.axvline(time[middle], color = "k")
-    ax.set_title('evidence for right neighbour object')
-    ax.set_xlabel('time')
+    ax.set_title('h) evidence for right neighbour object')
+    ax.set_xlabel('time (s)')
 
     plt.show()
