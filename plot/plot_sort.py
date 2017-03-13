@@ -4,7 +4,7 @@ import numpy as np
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 
-plot_data_file = '/home/flo/data/task_sort_robot.h5'
+plot_data_file = 'plot_data/task_sort_robot.h5'
 if os.path.isfile(plot_data_file):
     # data file exists, so simulation ran before
     # no need for running simulation again, so just get data for plotting

@@ -336,7 +336,7 @@ with model:
 
 if __name__ == '__main__':
 
-    plot_data_file = '/home/flo/data/out_of_order_robot1.h5'
+    plot_data_file = '../plot/plot_data/out_of_order_robot1.h5'
     import os
     import h5py
     if os.path.isfile(plot_data_file):
