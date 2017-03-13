@@ -380,59 +380,78 @@ if __name__ == '__main__':
             p_evidence_right = sim.data[order.p_evidence_right]
 
     # plot data
+    import matplotlib as mpl
     import matplotlib.pyplot as plt
 
-    labels = [str(int(freqs[ind])) + ' Hz stim' for ind in range(len(freqs))]
+    mpl.rcParams.update({'font.size': 17})
+    mpl.rcParams.update({'ytick.labelsize': 16})
+    mpl.rcParams.update({'xtick.labelsize': 16})
+
+    cfg_fig = {'subplot.left' : 0.04,
+               'subplot.right' : 0.97,
+               'subplot.top' : 0.93,
+               'subplot.bottom'   : 0.05,
+               'subplot.wspace'   : 0.1,
+               'subplot.hspace'   : 0.2,
+               }
+    mpl.rc('figure', **cfg_fig)
+    labels = [str(int(freqs[ind])) + ' Hz' for ind in range(len(freqs))]
     diff_labels = ['diff(' + str(int(freqs[ind +1])) + ',' + str(int(freqs[ind])) + ')' for ind in range(len(freqs)-1)]
     middle = len(trange)/2
     trange *=10
     time = trange
     fig = plt.figure(1)
-    fig.suptitle('Out of Order network', fontsize=14, fontweight='bold')
+    fig.suptitle('Out of Order Network', fontsize=20, fontweight='bold')
     ax = fig.add_subplot(421)
     plt.plot(trange, p_x, lw=2)
     plt.legend(labels=labels)
     ax.set_title('a) x-positions of stimuli in DVS image')
     ax.set_ylim([-1,1])
+    plt.setp(ax.get_xticklabels(), visible=False)
 
     ax = fig.add_subplot(422)
     plt.plot(trange, p_forget, lw=2)
     ax.set_title('e) forget-node for evidence networks')
     ax.set_ylim([-0.1,1.1])
+    plt.setp(ax.get_xticklabels(), visible=False)
 
     ax = fig.add_subplot(423)
     plt.plot(trange, p_diff, lw=2)
     plt.legend(labels=diff_labels)
-    ax.set_title('b) pariwise difference of x-positions')
+    ax.set_title('b) pairwise difference of x-positions')
+    plt.setp(ax.get_xticklabels(), visible=False)
 
     ax = fig.add_subplot(424)
     plt.plot(trange, p_evidence, lw=2)
     plt.legend(labels=labels, loc=2)
     plt.axvline(time[middle], color = "k")
     ax.set_title('f) evidence for target object')
+    plt.setp(ax.get_xticklabels(), visible=False)
 
     ax = fig.add_subplot(425)
     plt.plot(trange, p_neg_min, lw=2)
     ax.set_title('c) negative minimum ensemble')
     ax.set_ylim([-0.1,1.1])
+    plt.setp(ax.get_xticklabels(), visible=False)
 
     ax = fig.add_subplot(426)
     plt.plot(trange, p_evidence_left, lw=2)
     plt.legend(labels=labels, loc=2)
     plt.axvline(time[middle], color = "k")
     ax.set_title('g) evidence for left neighbour object')
+    plt.setp(ax.get_xticklabels(), visible=False)
 
     ax = fig.add_subplot(427)
     plt.plot(trange, p_odd, lw=2)
     plt.legend(labels=labels)
     ax.set_title('d) most odd object based on pairwise difference')
-    ax.set_xlabel('time (s)')
+    ax.set_xlabel('time (s)', fontsize=16)
 
     ax = fig.add_subplot(428)
     plt.plot(trange, p_evidence_right, lw=2)
     plt.legend(labels=labels, loc=2)
     plt.axvline(time[middle], color = "k")
     ax.set_title('h) evidence for right neighbour object')
-    ax.set_xlabel('time (s)')
+    ax.set_xlabel('time (s)', fontsize=16)
 
     plt.show()

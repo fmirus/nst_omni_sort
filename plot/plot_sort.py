@@ -1,6 +1,7 @@
 import os
 import h5py
 import numpy as np
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 
 plot_data_file = '/home/flo/data/task_sort_robot.h5'
@@ -53,17 +54,31 @@ if os.path.isfile(plot_data_file):
         # task_sort_p_thal = np.array(hf.get('task_sort_p_thal'))
         # task_sort_p_behave = np.array(hf.get('task_sort_p_behave'))
 
+    cfg_fig = {'subplot.left' : 0.04,
+               'subplot.right' : 0.97,
+               'subplot.top' : 0.93,
+               'subplot.bottom'   : 0.05,
+               'subplot.wspace'   : 0.1,
+               'subplot.hspace'   : 0.2,
+               }
 
+    mpl.rcParams.update({'font.size': 17})
+    # mpl.rcParams.update({'axes.titlesize': 20})
+    mpl.rcParams.update({'ytick.labelsize': 16})
+    mpl.rcParams.update({'xtick.labelsize': 16})
+    # mpl.rcParams.update({'figure.linewidth': 3})
+    mpl.rc('figure', **cfg_fig)
     data['trange'] *= 60
     periods = [2500, 2860, 4000, 5000, 6670]
     freqs = np.ceil(1000000 / np.array(periods, dtype=float))
-    labels = [str(int(freqs[ind])) + ' Hz stim' for ind in range(len(freqs))]
+    labels = [str(int(freqs[ind])) + ' Hz' for ind in range(len(freqs))]
 
     fig = plt.figure(1)
-    fig.suptitle('Grab and Sort network', fontsize=14, fontweight='bold')
+    fig.suptitle('Grab and Sort Network', fontsize=20, fontweight='bold')
     ax = fig.add_subplot(511)
     ax.set_title('a) activation levels of high-level behaviours')
     plt.plot(data['trange'], data['task_sort_p_behave'], lw=2)
+    plt.setp(ax.get_xticklabels(), visible=False)
     plt.legend(labels=['grab', 'hold_and_side', 'put_down', 'finish'])
     ax = fig.add_subplot(512)
     ax.set_title('b) activation levels of low-level behaviours')
@@ -79,17 +94,20 @@ if os.path.isfile(plot_data_file):
     behave_labels=['orientLR', 'orientFB', 'arm_orientLR', 'move_back', 'grip', 'move_side', 'put_down', 'finish']
     l1 = plt.legend(handles=[pl1, pl2, pl3, pl4], labels=behave_labels[:4], loc=1)
     plt.gca().add_artist(l1)
+    plt.setp(ax.get_xticklabels(), visible=False)
     plt.legend(handles=[pl5, pl6, pl7, pl8], labels=behave_labels[4:], loc=2)
     # ax.set_title('a) x-positions of stimuli in DVS image')
     # ax.set_ylim([-1,1])
     ax = fig.add_subplot(513)
     ax.set_title('c) choice ensemble (state-variables for action-selection)')
     plt.plot(data['trange'], data['task_sort_p_choice'], lw=2)
+    plt.setp(ax.get_xticklabels(), visible=False)
     plt.legend(labels=['task_activation', 'has_grabbed', 'reached_goal', 'finished'])
     ax = fig.add_subplot(514)
     ax.set_title('d) relevant sensor information of target object')
     plt.plot(data['trange'], data['target_p_info'][:,3::4], lw=2)
     plt.plot(data['trange'], data['target_p_info'][:,8], lw=2, color='lime')
+    plt.setp(ax.get_xticklabels(), visible=False)
     plt.legend(labels=['lc','rc','ac', 'ax'])
     ax = fig.add_subplot(515)
     
@@ -109,25 +127,32 @@ if os.path.isfile(plot_data_file):
     ax.set_xlabel('time (s)')
     
     fig = plt.figure(2)
-    fig.suptitle('Hold and Move Side Network', fontsize=14, fontweight='bold')
+    fig.suptitle('Hold and Move Side Network', fontsize=20, fontweight='bold')
     ax = fig.add_subplot(411)
+    ax.set_xlim([24,42])
     # plt.plot(data['trange'][400:700], data['task_sort_p_behave'][400:700,:], lw=2)
     plt.plot(data['trange'], data['task_sort_p_behave'], lw=2)
     plt.plot(data['trange'], data['task_sort_p_choice'][:,2], lw=2, color='m')
     ax.set_title('a) activation levels of high-level behaviours and goal-position state')
+    plt.setp(ax.get_xticklabels(), visible=False)
     plt.legend(labels=['grab', 'hold_and_side', 'put_down', 'finish', 'reached_pos'])
     ax = fig.add_subplot(412)
+    ax.set_xlim([24,42])
     # plt.plot(data['trange'][400:700], data['target_left_p_info'][400:700,3::4], lw=2)
     plt.plot(data['trange'], data['target_p_info'][:,3::4], lw=2)
     ax.set_title('b) certainties of target object')
+    plt.setp(ax.get_xticklabels(), visible=False)
     plt.legend(labels=['lc','rc','ac'])
     ax = fig.add_subplot(413)
+    ax.set_xlim([24,42])
     # plt.plot(data['trange'][400:700], data['target_left_p_info'][400:700,0::4], lw=2)
     plt.plot(data['trange'], data['target_left_p_info'][:,0], lw=2)
     plt.plot(data['trange'][:], data['target_right_p_info'][:,4], lw=2)
     ax.set_title('c) x-positions of left/right neighbour objects in resp. cameras')
+    plt.setp(ax.get_xticklabels(), visible=False)
     plt.legend(labels=['left lx','right rx'])
     ax = fig.add_subplot(414)
+    ax.set_xlim([24,42])
     # plt.plot(data['trange'][400:700], data['target_left_p_info'][400:700,1::4], lw=2)
     plt.plot(data['trange'], data['target_left_p_info'][:,3], lw=2)
     plt.plot(data['trange'][:], data['target_right_p_info'][:,7], lw=2)
@@ -137,14 +162,17 @@ if os.path.isfile(plot_data_file):
     ax.set_xlabel('time (s)')
 
     fig = plt.figure(3)
-    fig.suptitle('Grab Network', fontsize=14, fontweight='bold')
+    fig.suptitle('Grab Network', fontsize=20, fontweight='bold')
     ax = fig.add_subplot(411)
+    ax.set_xlim([0,35])
     # plt.plot(data['trange'][400:700], data['task_sort_p_behave'][400:700,:], lw=2)
     plt.plot(data['trange'], data['task_sort_p_behave'], lw=2)
     plt.plot(data['trange'], data['task_sort_p_choice'][:,1], lw=2, color='m')
     ax.set_title('a) activation levels of high-level behaviours and gripper-state')
+    plt.setp(ax.get_xticklabels(), visible=False)
     plt.legend(labels=['grab', 'hold_and_side', 'put_down', 'finish', 'has_grabbed'])
     ax = fig.add_subplot(412)
+    ax.set_xlim([0,35])
     ax.set_title('b) activation levels of low-level behaviours')
     plt.plot(data['trange'], data['orientLR_p_act'], lw=2, color='b')
     plt.plot(data['trange'], data['orientFB_p_act'], lw=2, color='r')
@@ -152,12 +180,16 @@ if os.path.isfile(plot_data_file):
     plt.plot(data['trange'], data['stay_away_p_act'], lw=2, color='k')
     plt.plot(data['trange'], data['grip_p_act'], lw=2, color='g')
     plt.plot(data['trange'], data['move_side_p_act'], lw=2, color='c')
+    plt.setp(ax.get_xticklabels(), visible=False)
     plt.legend(labels=['orientLR', 'orientFB', 'arm_orientLR', 'move_back', 'grip', 'move_side'])
     ax = fig.add_subplot(413)
+    ax.set_xlim([0,35])
     ax.set_title('c) certainties of target object')
     plt.plot(data['trange'], data['target_p_info'][:,3::4], lw=2)
+    plt.setp(ax.get_xticklabels(), visible=False)
     plt.legend(labels=['lc','rc','ac'])
     ax = fig.add_subplot(414)
+    ax.set_xlim([0,35])
     plt.plot(data['trange'], data['target_p_info'][:,0::4], lw=2)
     plt.legend(labels=['lx','rx','ax'])
     ax.set_title('d) x-positions of target object')
@@ -168,5 +200,36 @@ if os.path.isfile(plot_data_file):
     
 
     ax.set_xlabel('time (s)')
+
+    fig = plt.figure(4)
+    fig.suptitle('Put Down Network', fontsize=20, fontweight='bold')
+    ax = fig.add_subplot(411)
+    ax.set_xlim([30,50])
+    # plt.plot(data['trange'][400:700], data['task_sort_p_behave'][400:700,:], lw=2)
+    plt.plot(data['trange'], data['task_sort_p_behave'], lw=2)
+    plt.plot(data['trange'], data['task_sort_p_choice'][:,1], lw=2, color='m')
+    ax.set_title('a) activation levels of high-level behaviours and gripper-state')
+    plt.setp(ax.get_xticklabels(), visible=False)
+    plt.legend(labels=['grab', 'hold_and_side', 'put_down', 'finish', 'has_grabbed'])
+    ax = fig.add_subplot(412)
+    ax.set_xlim([30,50])
+    ax.set_title('b) choice ensemble (state-variables for action-selection)')
+    plt.plot(data['trange'], data['task_sort_p_choice'], lw=2)
+    plt.setp(ax.get_xticklabels(), visible=False)
+    plt.legend(labels=['task_activation', 'has_grabbed', 'reached_goal', 'finished'])
+    ax = fig.add_subplot(413)
+    ax.set_xlim([30,50])
+    ax.set_title('c) certainties of target object')
+    plt.plot(data['trange'], data['target_p_info'][:,3::4], lw=2)
+    plt.setp(ax.get_xticklabels(), visible=False)
+    plt.legend(labels=['lc','rc','ac'])
+    ax = fig.add_subplot(414)
+    ax.set_xlim([30,50])
+    plt.plot(data['trange'], data['target_left_p_info'][:,0], lw=2)
+    plt.plot(data['trange'][:], data['target_right_p_info'][:,4], lw=2)
+    ax.set_title('d) x-positions of left/right neighbour objects in resp. cameras')
+    plt.legend(labels=['left lx','right rx'])
+
+    ax.set_xlabel('time (s)', fontsize=16)
 
     plt.show()
